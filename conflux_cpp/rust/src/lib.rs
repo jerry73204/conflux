@@ -400,7 +400,10 @@ mod tests {
 
         unsafe {
             // Push messages with close timestamps
+            // Using integer values as opaque user_data identifiers for testing
+            #[allow(clippy::manual_dangling_ptr)]
             let user_data1 = 1usize as *mut c_void;
+            #[allow(clippy::manual_dangling_ptr)]
             let user_data2 = 2usize as *mut c_void;
 
             let result = conflux_push_message(sync, key1.as_ptr(), 1_000_000_000, user_data1);
