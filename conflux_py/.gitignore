@@ -1,0 +1,18 @@
+# Rust build artifacts
+rust/target/
+
+# Python build artifacts
+*.egg-info/
+dist/
+build/
+*.so
+*.pyd
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/

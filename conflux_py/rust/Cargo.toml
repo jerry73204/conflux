@@ -1,0 +1,18 @@
+[package]
+name = "conflux-py"
+version = "0.2.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Python bindings for conflux multi-stream synchronization"
+
+# Keep this crate out of the main workspace
+[workspace]
+
+[lib]
+name = "_conflux_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+conflux-core = { path = "../../crates/conflux-core" }
+indexmap = "2"
+pyo3 = { version = "0.23", features = ["extension-module"] }
