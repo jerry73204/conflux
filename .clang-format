@@ -1,0 +1,41 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+DerivePointerAlignment: false
+PointerAlignment: Left
+AccessModifierOffset: -4
+IncludeBlocks: Regroup
+IncludeCategories:
+  # System headers
+  - Regex: '<[a-z_]+>'
+    Priority: 4
+  # C++ standard library
+  - Regex: '<[a-z_]+/.*>'
+    Priority: 3
+  # ROS2 headers
+  - Regex: '"rclcpp/.*"'
+    Priority: 2
+  - Regex: '".*_msgs/.*"'
+    Priority: 2
+  # Local headers
+  - Regex: '".*"'
+    Priority: 1
+SortIncludes: CaseSensitive
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInAngles: Never
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+Standard: c++17
