@@ -1,0 +1,5 @@
+# Rust build artifacts
+rust/target/
+
+# Generated C header (rebuilt by cbindgen)
+include/conflux/ffi.h

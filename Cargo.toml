@@ -5,9 +5,11 @@ members = [
 ]
 # Exclude ROS2 crates from workspace - they have wildcard dependencies (*) that
 # get patched by colcon at build time. Build with: just build
+# Also exclude FFI crates that are built by CMake/setuptools.
 exclude = [
     "crates/conflux-ros2",
     "nodes/conflux-node",
+    "conflux_cpp/rust",
 ]
 
 [workspace.package]

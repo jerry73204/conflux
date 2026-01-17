@@ -1,0 +1,17 @@
+[package]
+name = "conflux-ffi"
+version = "0.2.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "C FFI bindings for conflux synchronization library"
+
+[lib]
+name = "conflux_ffi"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+conflux-core = { path = "../../crates/conflux-core" }
+indexmap = "2"
+
+[build-dependencies]
+cbindgen = "0.29"
