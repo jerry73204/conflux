@@ -3,13 +3,13 @@
 //! This module provides a C-compatible interface to the conflux-core
 //! synchronization algorithm for use in C++ ROS2 nodes.
 
-use conflux_core::WithTimestamp;
-use conflux_core::buffer::Buffer;
-use conflux_core::state::State;
+use conflux_core::{WithTimestamp, buffer::Buffer, state::State};
 use indexmap::IndexMap;
-use std::ffi::{CStr, c_char, c_void};
-use std::ptr;
-use std::time::Duration;
+use std::{
+    ffi::{CStr, c_char, c_void},
+    ptr,
+    time::Duration,
+};
 
 /// Opaque handle to a synchronizer instance.
 ///

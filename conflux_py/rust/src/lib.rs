@@ -3,14 +3,10 @@
 //! This module provides Python-compatible wrappers around the conflux-core
 //! synchronization algorithm using PyO3.
 
-use conflux_core::WithTimestamp;
-use conflux_core::buffer::Buffer;
-use conflux_core::state::State;
+use conflux_core::{WithTimestamp, buffer::Buffer, state::State};
 use indexmap::IndexMap;
-use pyo3::prelude::*;
-use pyo3::types::PyDict;
-use std::collections::HashMap;
-use std::time::Duration;
+use pyo3::{prelude::*, types::PyDict};
+use std::{collections::HashMap, time::Duration};
 
 /// Internal message wrapper that implements WithTimestamp and holds a Python object.
 struct PyMessage {
