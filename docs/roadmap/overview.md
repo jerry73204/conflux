@@ -18,14 +18,22 @@ conflux/                          # Users add as git submodule
 ├── conflux_cpp/                  # C++ ROS package (includes FFI)
 │   ├── CMakeLists.txt
 │   ├── package.xml
-│   ├── include/conflux/
-│   │   ├── synchronizer.hpp
-│   │   └── types.hpp
+│   ├── include/
+│   │   ├── conflux_ffi.h         # Generated C header
+│   │   └── conflux/
+│   │       ├── synchronizer.hpp
+│   │       ├── types.hpp
+│   │       └── visibility.h
 │   ├── src/
-│   │   └── synchronizer.cpp
+│   │   ├── synchronizer.cpp
+│   │   ├── ffi_bridge.cpp
+│   │   └── ffi_bridge.hpp
+│   ├── examples/
+│   │   └── sync_node.cpp
 │   └── rust/                     # FFI crate (built by CMake)
 │       ├── Cargo.toml
 │       ├── cbindgen.toml
+│       ├── build.rs
 │       └── src/lib.rs
 │
 ├── conflux_py/                   # Python ROS package
@@ -98,8 +106,8 @@ conflux_node         conflux_cpp          conflux_py
 |-------|-------------|--------|
 | 1 | Workspace setup, conflux-core extraction | ✅ Complete |
 | 2 | conflux-ros2 library extraction | ✅ Complete |
-| 3 | C++ bindings (conflux_cpp) | 📋 Planned |
-| 4 | Python bindings (conflux_py) | 📋 Planned |
+| 3 | C++ bindings (conflux_cpp) | ✅ Complete |
+| 4 | Python bindings (conflux_py) | ✅ Complete |
 | 5 | Flatten directory structure | 📋 Planned |
 
 ## Phase Details
