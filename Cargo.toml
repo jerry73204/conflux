@@ -34,6 +34,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Utilities
 indexmap = { version = "2", features = ["serde"] }
 
+[package.metadata.ros]
+install_to_share = ["launch", "config"]
+
 [profile.test-release]
 inherits = "release"
 debug = true

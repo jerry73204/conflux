@@ -1,0 +1,34 @@
+# Low-frequency localization sensors
+#
+# Scenario: Outdoor robot localization
+# - GPS at 1-5Hz (absolute position)
+# - Wheel odometry at 10Hz (relative motion)
+# - Compass/magnetometer at 5Hz (heading)
+#
+# Key settings:
+# - 200ms window accommodates GPS update rate
+# - Smaller buffers (less data volume at low rates)
+# - Low-frequency staleness preset
+
+inputs:
+  - topic: /gps/fix
+    type: sensor_msgs/msg/NavSatFix
+  - topic: /odom
+    type: nav_msgs/msg/Odometry
+  - topic: /imu/mag
+    type: sensor_msgs/msg/MagneticField
+
+output:
+  topic: /localization/synchronized
+
+sync:
+  # 200ms window for low-frequency GPS
+  window_size: 200ms
+  buffer_size: 16
+
+staleness:
+  preset: low_frequency
+
+qos:
+  reliability: best_effort
+  history_depth: 1

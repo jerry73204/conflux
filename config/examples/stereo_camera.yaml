@@ -1,0 +1,40 @@
+# Stereo camera synchronization
+#
+# Scenario: Stereo vision for depth estimation
+# - Left camera at 30Hz
+# - Right camera at 30Hz
+# - CameraInfo for each camera (calibration data)
+#
+# Challenge: Cameras must be tightly synchronized for accurate depth
+# Solution: Very small window (5ms) for precise frame pairing
+#
+# Key settings:
+# - 5ms window ensures frames are from same capture instant
+# - High-frequency staleness for real-time processing
+# - Small buffers (frames arrive at same time)
+
+inputs:
+  - topic: /stereo/left/image_raw
+    type: sensor_msgs/msg/Image
+  - topic: /stereo/right/image_raw
+    type: sensor_msgs/msg/Image
+  - topic: /stereo/left/camera_info
+    type: sensor_msgs/msg/CameraInfo
+  - topic: /stereo/right/camera_info
+    type: sensor_msgs/msg/CameraInfo
+
+output:
+  topic: /stereo/synchronized
+
+sync:
+  # 5ms window for tight stereo synchronization
+  # Ensures left/right frames are from same capture
+  window_size: 5ms
+  buffer_size: 8
+
+staleness:
+  preset: high_frequency
+
+qos:
+  reliability: best_effort
+  history_depth: 1

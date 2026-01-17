@@ -1,0 +1,39 @@
+# Offline exact-match synchronization
+#
+# Scenario: Post-processing recorded sensor data (rosbag)
+# - Process all messages without dropping any
+# - Wait for slow/bursty input streams
+# - Prioritize complete matching over latency
+#
+# Key settings:
+# - Large window (500ms) for tolerance of timing variations
+# - Large buffers to handle bursty playback
+# - Reliable QoS to ensure no message loss
+# - Relaxed staleness for batch processing
+
+inputs:
+  - topic: /camera/image_raw
+    type: sensor_msgs/msg/Image
+  - topic: /lidar/points
+    type: sensor_msgs/msg/PointCloud2
+
+output:
+  topic: /processed/synchronized
+
+sync:
+  # 500ms window tolerates timing jitter in rosbag playback
+  # and sensor timestamp inaccuracies
+  window_size: 500ms
+
+  # Large buffer handles bursty data from rosbag
+  buffer_size: 256
+
+staleness:
+  # Batch preset: lazy cleanup, large time horizon
+  # Messages are only dropped when no valid match exists
+  preset: batch
+
+qos:
+  # Reliable QoS ensures no message loss during processing
+  reliability: reliable
+  history_depth: 50

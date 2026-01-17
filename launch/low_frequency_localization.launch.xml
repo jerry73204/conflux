@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!--
+Low-frequency localization sensor synchronization.
+
+Demonstrates synchronization of slow-updating sensors typically used
+for outdoor robot localization (GPS, odometry, compass).
+
+Usage:
+    ros2 launch msync low_frequency_localization.launch.xml
+
+Scenario:
+    - GPS at 1-5Hz (absolute position)
+    - Wheel odometry at 10Hz (relative motion)
+    - Magnetometer at 5Hz (heading)
+    - 200ms window accommodates GPS update rate
+-->
+<launch>
+  <!-- Arguments -->
+  <arg name="log_level" default="info"
+       description="Logging level"/>
+
+  <!-- Config file path -->
+  <let name="config_file"
+       value="$(find-pkg-share msync)/config/examples/low_frequency_localization.yaml"/>
+
+  <!-- msync node -->
+  <node pkg="msync" exec="msync" name="msync_localization" output="screen"
+        args="--ros-args --log-level $(var log_level)">
+    <param name="config_file" value="$(var config_file)"/>
+  </node>
+</launch>

@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<!--
+Offline exact-match synchronization launch file.
+
+Demonstrates synchronization for post-processing recorded data (rosbag).
+This scenario prioritizes complete matching - it waits for slow inputs
+and uses large buffers to ensure no messages are dropped unnecessarily.
+
+Usage:
+    # Start synchronizer, then play rosbag separately
+    ros2 launch msync offline_sync.launch.xml
+
+    # With integrated rosbag playback
+    ros2 launch msync offline_sync.launch.xml bag:=/path/to/recording
+
+Scenario:
+    - Processing recorded sensor data from rosbag
+    - 500ms synchronization window for timing tolerance
+    - Large buffers (256) for bursty playback
+    - Reliable QoS to prevent message loss
+-->
+<launch>
+  <!-- Arguments -->
+  <arg name="log_level" default="info"
+       description="Logging level"/>
+
+  <!-- Config file path -->
+  <let name="config_file"
+       value="$(find-pkg-share msync)/config/examples/offline_exact_match.yaml"/>
+
+  <!-- msync node -->
+  <node pkg="msync" exec="msync" name="msync_offline" output="screen"
+        args="--ros-args --log-level $(var log_level)">
+    <param name="config_file" value="$(var config_file)"/>
+  </node>
+</launch>

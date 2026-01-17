@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+Basic launch file for the msync node.
+
+Usage:
+    ros2 launch msync msync.launch.xml config:=/path/to/config.yaml
+
+Arguments:
+    config: Path to the YAML configuration file (default: example.yaml)
+    log_level: Logging level (default: info)
+-->
+<launch>
+  <!-- Arguments -->
+  <arg name="config" default="$(find-pkg-share msync)/config/example.yaml"
+       description="Path to the msync configuration file"/>
+  <arg name="log_level" default="info"
+       description="Logging level (trace, debug, info, warn, error)"/>
+
+  <!-- msync node -->
+  <node pkg="msync" exec="msync" name="msync" output="screen"
+        args="--ros-args --log-level $(var log_level)">
+    <param name="config_file" value="$(var config)"/>
+  </node>
+</launch>

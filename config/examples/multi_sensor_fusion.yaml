@@ -1,0 +1,40 @@
+# Multi-sensor fusion synchronization
+#
+# Scenario: Robot perception with multiple sensor modalities
+# - Camera at 30Hz (visual features)
+# - LiDAR at 10Hz (3D point cloud)
+# - IMU at 100Hz (motion estimation)
+#
+# Challenge: Sensors run at very different rates
+# Solution: Use window that accommodates slowest sensor (LiDAR at 10Hz = 100ms)
+#
+# Key settings:
+# - 100ms window to capture one LiDAR scan period
+# - IMU messages are heavily oversampled (will buffer many)
+# - High-frequency staleness to bound IMU buffer growth
+
+inputs:
+  - topic: /camera/image_raw
+    type: sensor_msgs/msg/Image
+  - topic: /lidar/points
+    type: sensor_msgs/msg/PointCloud2
+  - topic: /imu/data
+    type: sensor_msgs/msg/Imu
+
+output:
+  topic: /fusion/synchronized
+
+sync:
+  # 100ms window = one LiDAR scan period
+  # Captures ~3 camera frames and ~10 IMU samples per group
+  window_size: 100ms
+
+  # Larger buffer for high-rate IMU stream
+  buffer_size: 64
+
+staleness:
+  preset: high_frequency
+
+qos:
+  reliability: best_effort
+  history_depth: 1

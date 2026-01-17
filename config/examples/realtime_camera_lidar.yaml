@@ -1,0 +1,34 @@
+# Real-time camera + LiDAR synchronization
+#
+# Scenario: Autonomous vehicle perception pipeline
+# - Camera at 30Hz, LiDAR at 10Hz
+# - Tight latency requirement (<50ms end-to-end)
+# - Drops stale messages to maintain real-time performance
+#
+# Key settings:
+# - Small window (33ms) to match 30Hz frame rate
+# - Aggressive staleness detection for bounded latency
+# - Best-effort QoS for minimal overhead
+
+inputs:
+  - topic: /camera/image_raw
+    type: sensor_msgs/msg/Image
+  - topic: /lidar/points
+    type: sensor_msgs/msg/PointCloud2
+
+output:
+  topic: /perception/synchronized
+
+sync:
+  # 33ms window matches 30Hz camera rate
+  # LiDAR messages at 10Hz will be paired with nearest camera frame
+  window_size: 33ms
+  buffer_size: 16
+
+staleness:
+  # High-frequency preset: aggressive cleanup, bounded latency
+  preset: high_frequency
+
+qos:
+  reliability: best_effort
+  history_depth: 1
