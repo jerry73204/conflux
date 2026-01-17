@@ -89,10 +89,9 @@ test-lib:
 # Running
 # ==============================================================================
 
-# Source ROS2 and run the node (after build)
+# Run the node (after build, requires .envrc sourced)
 run:
-    @echo "Sourcing install/setup.bash and running msync node..."
-    @bash -c 'source install/setup.bash && ros2 run msync msync'
+    ros2 run msync msync
 
 # ==============================================================================
 # Maintenance
