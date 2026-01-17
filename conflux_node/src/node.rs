@@ -1,140 +1,63 @@
 //! ConfluxNode implementation.
 
-use crate::config::{Config, InputConfig, Reliability};
-use conflux_ros2::conflux_core::sync;
-use conflux_ros2::{
-    create_dynamic_subscription, DynamicSubscriptionHandle, SynchronizedGroup, TimestampedMessage,
-};
-use eyre::{Result, WrapErr};
-use futures::stream::{self, TryStreamExt};
-use indexmap::IndexMap;
+use crate::config::{Config, Reliability};
+use conflux_ros2::{Ros2SyncConfig, Ros2SyncRunner};
+use eyre::Result;
 use rclrs::{Node, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy};
-use tokio::sync::mpsc;
-use tracing::{debug, info};
+use tracing::info;
 
 /// The multi-stream synchronization node.
+///
+/// This node receives messages from multiple input topics, synchronizes them
+/// by timestamp using a time-window algorithm, and publishes the synchronized
+/// messages to output topics (input topic + suffix).
 pub struct ConfluxNode {
-    /// The ROS2 node handle.
-    _node: Node,
-
-    /// Subscriptions for input topics (kept alive).
-    /// Uses dynamic subscriptions for runtime message type support.
-    _subscriptions: Vec<DynamicSubscriptionHandle>,
-
-    /// Channel receiver for incoming messages.
-    message_rx: mpsc::UnboundedReceiver<(String, TimestampedMessage)>,
-
-    /// Configuration.
-    config: Config,
+    /// The ROS2 synchronization runner.
+    runner: Ros2SyncRunner,
 }
 
 impl ConfluxNode {
     /// Create a new ConfluxNode with the given configuration.
-    pub fn new(node: Node, config: Config) -> Result<Self> {
-        let (message_tx, message_rx) = mpsc::unbounded_channel();
-
+    pub fn new(node: &Node, config: Config) -> Result<Self> {
         // Build QoS profile from config
         let qos = build_qos_profile(&config);
 
-        // Create subscriptions for all input topics
-        let subscriptions = create_subscriptions(&node, &config.inputs, qos, message_tx)?;
+        // Build inputs as (topic, msg_type) pairs
+        let inputs: Vec<(String, String)> = config
+            .inputs
+            .iter()
+            .map(|i| (i.topic.clone(), i.msg_type.clone()))
+            .collect();
 
         info!(
-            num_subscriptions = subscriptions.len(),
-            "Created subscriptions for all input topics"
+            num_inputs = inputs.len(),
+            output_suffix = %config.output.suffix,
+            window_size = ?config.sync.window_size,
+            buffer_size = config.sync.buffer_size,
+            "Creating ConfluxNode"
         );
 
-        Ok(Self {
-            _node: node,
-            _subscriptions: subscriptions,
-            message_rx,
-            config,
-        })
+        // Create the ROS2 sync configuration
+        let sync_config = Ros2SyncConfig {
+            inputs,
+            output_suffix: config.output.suffix.clone(),
+            window_size: config.sync.window_size,
+            buffer_size: config.sync.buffer_size,
+            qos,
+        };
+
+        // Create the synchronization runner
+        let runner = Ros2SyncRunner::new(node, sync_config)?;
+
+        Ok(Self { runner })
     }
 
     /// Run the synchronization loop.
     ///
     /// This consumes the node and runs until the input stream ends or an error occurs.
     pub async fn run(self) -> Result<()> {
-        info!(
-            window_size = ?self.config.sync.window_size,
-            buffer_size = self.config.sync.buffer_size,
-            num_inputs = self.config.inputs.len(),
-            "Starting synchronization"
-        );
-
-        // Extract fields we need
-        let keys: Vec<String> = self.config.inputs.iter().map(|i| i.topic.clone()).collect();
-        let sync_config = self.config.to_sync_config();
-        let message_rx = self.message_rx;
-
-        // Convert mpsc receiver to a stream (boxed for Unpin)
-        let input_stream = Box::pin(stream::unfold(message_rx, |mut rx| async move {
-            rx.recv().await.map(|msg| (Ok(msg), rx))
-        }));
-
-        // Run synchronization
-        let (output_stream, _feedback_rx) = sync(input_stream, keys, sync_config)
-            .wrap_err("Failed to create synchronization stream")?;
-
-        // Process synchronized groups
-        let result: Result<(), eyre::Error> = output_stream
-            .try_for_each(|group: IndexMap<String, TimestampedMessage>| async move {
-                let timestamp = group
-                    .values()
-                    .next()
-                    .map(|m| m.timestamp)
-                    .unwrap_or_default();
-                let synced = SynchronizedGroup::new(timestamp, group);
-
-                handle_synchronized_group(synced);
-                Ok(())
-            })
-            .await;
-
-        result.wrap_err("Synchronization stream ended with error")
+        self.runner.run().await
     }
-}
-
-/// Create subscriptions for all configured input topics.
-fn create_subscriptions(
-    node: &Node,
-    inputs: &[InputConfig],
-    qos: QoSProfile,
-    tx: mpsc::UnboundedSender<(String, TimestampedMessage)>,
-) -> Result<Vec<DynamicSubscriptionHandle>> {
-    let mut subscriptions = Vec::with_capacity(inputs.len());
-
-    for input in inputs {
-        let subscription =
-            create_dynamic_subscription(node, &input.topic, &input.msg_type, qos, tx.clone())?;
-        subscriptions.push(subscription);
-    }
-
-    Ok(subscriptions)
-}
-
-/// Handle a synchronized group of messages.
-fn handle_synchronized_group(group: SynchronizedGroup) {
-    info!(
-        timestamp = ?group.timestamp,
-        num_messages = group.len(),
-        topics = ?group.messages.keys().collect::<Vec<_>>(),
-        "Synchronized group"
-    );
-
-    // Log details for each message in the group
-    for (topic, msg) in group.iter() {
-        debug!(
-            topic = %topic,
-            timestamp = ?msg.timestamp,
-            data_len = msg.data.len(),
-            "Message in group"
-        );
-    }
-
-    // TODO: Publish synchronized output
-    // This would serialize the group and publish to the output topic
 }
 
 /// Build a QoS profile from the configuration.
@@ -156,22 +79,25 @@ fn build_qos_profile(config: &Config) -> QoSProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::SyncConfig;
+    use crate::config::{InputConfig, OutputConfig, QosConfig, SyncConfig};
     use std::time::Duration;
 
     #[test]
     fn test_build_qos_profile() {
         let config = Config {
-            inputs: vec![],
-            output: crate::config::OutputConfig {
-                topic: "/out".to_string(),
+            inputs: vec![InputConfig {
+                topic: "/test".to_string(),
+                msg_type: "std_msgs/msg/String".to_string(),
+            }],
+            output: OutputConfig {
+                suffix: "_sync".to_string(),
             },
             sync: SyncConfig {
                 window_size: Duration::from_millis(50),
                 buffer_size: 64,
             },
             staleness: None,
-            qos: crate::config::QosConfig {
+            qos: QosConfig {
                 reliability: Reliability::BestEffort,
                 history_depth: 5,
             },

@@ -19,7 +19,7 @@ inputs:
     type: sensor_msgs/msg/MagneticField
 
 output:
-  topic: /localization/synchronized
+  suffix: _sync
 
 sync:
   # 200ms window for low-frequency GPS

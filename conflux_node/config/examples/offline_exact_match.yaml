@@ -18,7 +18,7 @@ inputs:
     type: sensor_msgs/msg/PointCloud2
 
 output:
-  topic: /processed/synchronized
+  suffix: _sync
 
 sync:
   # 500ms window tolerates timing jitter in rosbag playback

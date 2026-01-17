@@ -24,7 +24,7 @@ inputs:
     type: sensor_msgs/msg/CameraInfo
 
 output:
-  topic: /stereo/synchronized
+  suffix: _sync
 
 sync:
   # 5ms window for tight stereo synchronization

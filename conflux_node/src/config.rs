@@ -47,8 +47,8 @@ impl Config {
         );
 
         ensure!(
-            !self.output.topic.is_empty(),
-            "Output topic cannot be empty"
+            !self.output.suffix.is_empty(),
+            "Output suffix cannot be empty"
         );
 
         ensure!(
@@ -125,11 +125,17 @@ pub struct InputConfig {
     pub msg_type: String,
 }
 
-/// Configuration for the output topic.
+/// Configuration for output topics.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OutputConfig {
-    /// The ROS2 topic name for synchronized output.
-    pub topic: String,
+    /// Suffix to append to input topics for output (e.g., "_sync").
+    /// Each input topic `/foo` will have synchronized output at `/foo_sync`.
+    #[serde(default = "default_output_suffix")]
+    pub suffix: String,
+}
+
+fn default_output_suffix() -> String {
+    "_sync".to_string()
 }
 
 /// Synchronization parameters.
@@ -215,7 +221,7 @@ inputs:
     type: sensor_msgs/msg/PointCloud2
 
 output:
-  topic: /synchronized
+  suffix: _sync
 
 sync:
   window_size: 50ms
@@ -233,6 +239,7 @@ qos:
         config.validate().unwrap();
 
         assert_eq!(config.inputs.len(), 2);
+        assert_eq!(config.output.suffix, "_sync");
         assert_eq!(config.sync.window_size, Duration::from_millis(50));
         assert_eq!(config.sync.buffer_size, 64);
         assert_eq!(
@@ -246,7 +253,7 @@ qos:
         let yaml = r#"
 inputs: []
 output:
-  topic: /out
+  suffix: _sync
 sync:
   window_size: 50ms
   buffer_size: 64
@@ -265,7 +272,7 @@ inputs:
   - topic: /camera
     type: sensor_msgs/msg/Image
 output:
-  topic: /out
+  suffix: _sync
 sync:
   window_size: 50ms
   buffer_size: 64
@@ -273,5 +280,22 @@ sync:
 
         let config: Config = serde_yaml::from_str(yaml).unwrap();
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_default_output_suffix() {
+        let yaml = r#"
+inputs:
+  - topic: /camera
+    type: sensor_msgs/msg/Image
+output: {}
+sync:
+  window_size: 50ms
+  buffer_size: 64
+"#;
+
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        config.validate().unwrap();
+        assert_eq!(config.output.suffix, "_sync");
     }
 }

@@ -9,7 +9,7 @@
 inputs: []  # USER MUST FILL IN
 
 output:
-  topic: /synchronized
+  suffix: _sync
 
 sync:
   window_size: 33ms

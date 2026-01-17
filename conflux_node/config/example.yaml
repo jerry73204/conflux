@@ -18,9 +18,11 @@ inputs:
   # - topic: /imu/data
   #   type: sensor_msgs/msg/Imu
 
-# Output topic for synchronized message batches
+# Output configuration
+# Each input topic will have a corresponding output: input_topic + suffix
+# e.g., /camera/image_raw -> /camera/image_raw_sync
 output:
-  topic: /synchronized
+  suffix: _sync
 
 # Synchronization parameters (REQUIRED)
 sync:

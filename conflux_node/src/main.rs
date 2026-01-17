@@ -46,14 +46,14 @@ fn main() -> Result<()> {
 
     info!(
         num_inputs = config.inputs.len(),
-        output_topic = %config.output.topic,
+        output_suffix = %config.output.suffix,
         window_size = ?config.sync.window_size,
         buffer_size = config.sync.buffer_size,
         "Configuration loaded"
     );
 
     // Create the conflux node
-    let conflux_node = ConfluxNode::new(node.clone(), config)?;
+    let conflux_node = ConfluxNode::new(&node, config)?;
 
     // Create tokio runtime and run the node
     let runtime = tokio::runtime::Builder::new_multi_thread()
