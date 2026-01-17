@@ -14,7 +14,17 @@ Run `direnv allow` in the project directory if not already done. All commands in
 
 ## Project Overview
 
-conflux is a ROS2 node written in Rust that synchronizes messages from multiple input topics within configurable time windows. It uses the `multi-stream-synchronizer` library (included as a git submodule) to perform the synchronization algorithm.
+conflux is a **Cargo workspace** for multi-stream message synchronization. It consists of:
+
+- **conflux-core** (`crates/conflux-core/`): Pure Rust library implementing the time-window based synchronization algorithm. No ROS2 dependencies - can be used in any Rust project.
+- **conflux-ros2** (`crates/conflux-ros2/`): ROS2 integration utilities - dynamic subscriptions, timestamp extraction, message wrappers. Enables embedding sync in your own ROS2 nodes.
+- **conflux-node** (`nodes/conflux-node/`): Standalone ROS2 node that uses conflux-ros2 to synchronize messages from multiple input topics.
+
+This workspace structure enables:
+- Using the core algorithm as a standalone Rust library
+- Embedding synchronization in custom ROS2 nodes via conflux-ros2
+- Future C/C++ bindings (`conflux-ffi`)
+- Future Python bindings (`conflux-py`)
 
 ## Build System
 
@@ -23,10 +33,13 @@ This project uses `colcon-cargo-ros2` to build Rust code as a ROS2 package.
 **IMPORTANT: Always use the justfile for building and development tasks.**
 
 ```bash
-# Build the project (ALWAYS use this)
+# Build the core library only (no ROS2 dependencies)
+just build-core
+
+# Build the ROS2 node (ALWAYS use this for full build)
 just build
 
-# Never run colcon or cargo commands directly for building
+# Never run colcon or cargo commands directly for building the ROS2 node
 # The justfile handles proper ROS2 environment setup and configuration
 ```
 
@@ -39,7 +52,10 @@ just
 # Install colcon-cargo-ros2 extension
 just setup
 
-# Build with colcon (primary build method)
+# Build core library only (pure Rust)
+just build-core
+
+# Build ROS2 node with colcon (primary build method)
 just build
 
 # Build with verbose output
@@ -54,19 +70,25 @@ just format
 # Check formatting without changes
 just format-check
 
-# Run lints (requires prior build)
+# Run lints on core library
+just lint-core
+
+# Run lints on full workspace (requires prior build)
 just lint
 
 # Run all checks (format-check + lint)
 just check
 
-# Run tests with nextest
+# Run core library tests
+just test-core
+
+# Run full workspace tests (requires prior build)
 just test
 
 # Run tests with cargo test
 just test-cargo
 
-# Run only library tests
+# Alias for test-core
 just test-lib
 
 # Run the node (after build)
@@ -80,75 +102,135 @@ just clean-rust
 
 # Clean only colcon build/install/log
 just clean-colcon
-
-# Update git submodules
-just submodules
 ```
 
 ## Project Structure
 
 ```
 conflux/
-├── Cargo.toml              # Rust package manifest
-├── package.xml             # ROS2 package manifest
-├── justfile                # Build and development commands
-├── .envrc                  # direnv config (sources ROS2)
-├── config/
-│   ├── example.yaml        # Documented configuration example
-│   ├── presets/            # Pre-configured settings
-│   │   ├── high_frequency.yaml
-│   │   ├── low_frequency.yaml
-│   │   └── batch_processing.yaml
-│   └── examples/           # Scenario-specific configs
-│       ├── realtime_camera_lidar.yaml
-│       ├── offline_exact_match.yaml
-│       ├── multi_sensor_fusion.yaml
-│       ├── low_frequency_localization.yaml
-│       └── stereo_camera.yaml
-├── launch/
-│   ├── conflux.launch.xml             # Basic launch (config file arg)
-│   ├── realtime_sync.launch.xml     # Real-time latency-constrained
-│   ├── offline_sync.launch.xml      # Offline rosbag processing
-│   ├── multi_sensor_fusion.launch.xml
-│   ├── low_frequency_localization.launch.xml
-│   └── stereo_camera.launch.xml
-├── src/
-│   ├── main.rs             # Entry point
-│   ├── lib.rs              # Library root
-│   ├── config.rs           # Configuration parsing
-│   ├── message.rs          # TimestampedMessage wrapper
-│   ├── node.rs             # ConfluxNode implementation
-│   └── subscriber.rs       # Dynamic subscription factory
+├── Cargo.toml                    # Workspace root
+├── README.md                     # Project documentation
+├── LICENSE-MIT                   # MIT license
+├── LICENSE-APACHE                # Apache 2.0 license
+├── justfile                      # Build and development commands
+├── .envrc                        # direnv config (sources ROS2)
+│
+├── crates/
+│   ├── conflux-core/             # Core sync algorithm (pure Rust)
+│   │   ├── Cargo.toml
+│   │   ├── README.md
+│   │   ├── ALGORITHM.md
+│   │   └── src/
+│   │       ├── lib.rs            # Public API and sync() function
+│   │       ├── buffer.rs         # Per-stream message buffering
+│   │       ├── config.rs         # Configuration types
+│   │       ├── staleness.rs      # Staleness detection system
+│   │       ├── state.rs          # Core state machine
+│   │       ├── sync.rs           # Synchronization logic
+│   │       └── types.rs          # Core traits (WithTimestamp, Key)
+│   │
+│   └── conflux-ros2/             # ROS2 integration utilities
+│       ├── Cargo.toml
+│       └── src/
+│           ├── lib.rs            # Public API
+│           ├── message.rs        # TimestampedMessage, ROS time conversion
+│           └── subscriber.rs     # Dynamic subscription utilities
+│
+├── nodes/
+│   └── conflux-node/             # Standalone ROS2 node
+│       ├── Cargo.toml
+│       ├── package.xml           # ROS2 package manifest
+│       ├── config/               # Configuration files
+│       │   ├── example.yaml
+│       │   ├── presets/
+│       │   └── examples/
+│       ├── launch/               # ROS2 launch files
+│       │   └── *.launch.xml
+│       └── src/
+│           ├── main.rs           # Entry point
+│           ├── lib.rs            # Library root
+│           ├── config.rs         # YAML configuration parsing
+│           └── node.rs           # ConfluxNode implementation
+│
 ├── test/
-│   ├── test_all_launches.sh    # Tests all launch files
-│   ├── test_basic_launch.sh    # Tests basic launch file
-│   └── test_launch_quick.sh    # Quick single launch test
-├── multi-stream-synchronizer/  # Submodule with sync algorithm
-└── external/               # Reference repos (gitignored)
+│   └── *.sh                      # Test scripts
+│
+├── docs/
+│   └── roadmap/                  # Development roadmap
+│       ├── phase-1-workspace-setup.md
+│       └── phase-2-ros2-library.md
+│
+└── external/                     # Reference repos (gitignored)
 ```
 
 ## Architecture
 
-### Dynamic Message Handling
+### conflux-core (Pure Rust Library)
 
-The node supports **any** ROS2 message type at runtime through dynamic type introspection.
-This is enabled by using rclrs's `DynamicMessage` and `DynamicSubscription` functionality
-from commit 562e815 (not yet released in v0.6.0).
+The core library provides generic stream synchronization with these key components:
+
+- **`sync()` function**: Main entry point that takes a stream of `(Key, Message)` pairs
+- **`WithTimestamp` trait**: Implement this for your message type to provide timestamps
+- **`Key` trait**: Any type that's `Clone + Eq + Hash + Send + Sync`
+- **`State<K, T>`**: Core state machine managing buffers and matching logic
+- **`StalenessDetector`**: Prevents indefinite message accumulation
+
+```rust
+use conflux_core::{sync, Config, WithTimestamp};
+
+// Your message type just needs to implement WithTimestamp
+impl WithTimestamp for MyMessage {
+    fn timestamp(&self) -> Duration { self.ts }
+}
+
+// Then use sync() to synchronize streams
+let config = Config::basic(Duration::from_millis(50), None, 64);
+let (output_stream, feedback) = sync(input_stream, keys, config)?;
+```
+
+### conflux-ros2 (ROS2 Integration Library)
+
+Provides utilities for integrating conflux-core with ROS2:
+
+- **`TimestampedMessage`**: Message wrapper with extracted timestamp
+- **`SynchronizedGroup`**: Collection of synchronized messages
+- **`create_dynamic_subscription()`**: Subscribe to any message type at runtime
+- **`extract_header_stamp()`**: Extract timestamp from DynamicMessage
+- **`ros_time_to_duration()` / `duration_to_ros_time()`**: Time conversion utilities
+
+```rust
+use conflux_ros2::{create_dynamic_subscription, TimestampedMessage, SynchronizedGroup};
+use conflux_ros2::conflux_core::{sync, Config};
+
+// In your own ROS2 node:
+let (tx, rx) = mpsc::unbounded_channel();
+
+// Subscribe to topics dynamically
+let _sub = create_dynamic_subscription(
+    &node,
+    "/camera/image",
+    "sensor_msgs/msg/Image",
+    qos,
+    tx,
+)?;
+
+// Messages flow through the channel with timestamps extracted
+```
+
+### conflux-node (Standalone ROS2 Node)
+
+The node supports **arbitrary** ROS2 message types at runtime through dynamic type introspection.
+This is not a whitelist - any message type works as long as its type support library is installed.
 
 **How it works:**
 1. Message type is specified as a string in config (e.g., `"sensor_msgs/msg/Image"`)
 2. At runtime, rclrs loads the type support library via `libloading`
 3. Message structure is introspected via `rosidl_typesupport_introspection_c`
 4. Fields are accessed dynamically using `DynamicMessage::get("field_name")`
-
-**Key types from rclrs:**
-- `DynamicMessage`: Runtime message instance with field access
-- `DynamicSubscription`: Subscription that receives `DynamicMessage` instead of typed messages
-- `MessageTypeName`: Parsed message type (package/msg/type)
-- `Value`/`SimpleValue`: Enum for accessing field values
+5. No recompilation needed when changing message types
 
 **Timestamp extraction:**
-The `extract_header_stamp()` function navigates the message structure:
+The `extract_header_stamp()` function in `crates/conflux-ros2/src/subscriber.rs` navigates the message structure:
 ```rust
 msg.get("header")  // -> Value::Simple(SimpleValue::Message(header_view))
 header_view.get("stamp")  // -> Value::Simple(SimpleValue::Message(stamp_view))
@@ -156,16 +238,16 @@ stamp_view.get("sec")     // -> Value::Simple(SimpleValue::Int32(&sec))
 stamp_view.get("nanosec") // -> Value::Simple(SimpleValue::Uint32(&nanosec))
 ```
 
-**Supported message types:**
-Any ROS2 message with a `std_msgs/Header` field, including:
-- All `sensor_msgs/msg/*` types with headers
-- All `nav_msgs/msg/*` types with headers
-- All `geometry_msgs/msg/*Stamped` types
-- Custom message types with headers
+**Requirements:**
+- Message must have a `header.stamp` field for timestamp extraction
+- If missing, falls back to zero timestamp with a warning
+- Type support library must be installed (e.g., `ros-humble-sensor-msgs`)
 
-**Reference implementations:**
-- `external/rclrs`: rclrs source (v0.6.0 + commit 562e815)
-- `external/message_filters`: C++ message_filters for design patterns
+**Common compatible message types:**
+- `sensor_msgs/msg/{Image, PointCloud2, Imu, LaserScan, CameraInfo, ...}`
+- `nav_msgs/msg/{Odometry, Path, OccupancyGrid, ...}`
+- `geometry_msgs/msg/{PoseStamped, TwistStamped, ...}`
+- Any custom message type with a `std_msgs/Header` field
 
 ## Configuration
 
@@ -178,7 +260,8 @@ See `config/example.yaml` for full documentation.
 
 ## Dependencies
 
-- **multi-stream-synchronizer**: Core synchronization algorithm (local submodule)
+- **conflux-core**: Core synchronization algorithm (workspace crate)
+- **conflux-ros2**: ROS2 integration utilities (workspace crate)
 - **rclrs**: ROS2 Rust client library (git commit 562e815 for DynamicMessage support)
 - **tokio**: Async runtime for synchronization tasks
 - **sensor_msgs, std_msgs, builtin_interfaces**: ROS2 message types (resolved via colcon build)
@@ -187,7 +270,8 @@ See `config/example.yaml` for full documentation.
 
 - ROS2 message crates (`sensor_msgs`, `std_msgs`, etc.) use wildcard versions (`*`) in Cargo.toml
 - These are patched at build time via `build/ros2_cargo_config.toml` generated by colcon
-- Direct `cargo build` will fail - always use `just build`
+- Direct `cargo build` will fail for ROS2 crates - always use `just build`
+- `cargo build -p conflux-core` works without ROS2 environment
 - The `test-release` profile provides release optimizations with debug symbols
 
 ## Launch Files
@@ -226,11 +310,11 @@ ros2 launch conflux stereo_camera.launch.xml
 All test commands assume `.envrc` is sourced (see Environment Setup).
 
 ```bash
-# Run all tests (requires prior build for ROS2 types)
-just test
+# Run core library tests (no ROS2 required)
+just test-core
 
-# Run only the multi-stream-synchronizer library tests
-just test-lib
+# Run full workspace tests (requires prior build for ROS2 types)
+just test
 
 # Test launch files (requires built package)
 bash test/test_all_launches.sh
