@@ -1,0 +1,23 @@
+# Preset: High-frequency sensors
+#
+# Optimized for: LiDAR, cameras, and other sensors running at 10-30Hz
+# Characteristics:
+#   - Tight time windows (~33ms for 30Hz)
+#   - Aggressive staleness detection
+#   - Moderate buffer sizes
+
+inputs: []  # USER MUST FILL IN
+
+output:
+  topic: /synchronized
+
+sync:
+  window_size: 33ms
+  buffer_size: 32
+
+staleness:
+  preset: high_frequency
+
+qos:
+  reliability: best_effort
+  history_depth: 1

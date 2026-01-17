@@ -1,0 +1,39 @@
+[package]
+name = "msync"
+version = "0.1.0"
+edition = "2024"
+description = "Multi-stream message synchronization ROS2 node"
+license = "MIT"
+
+[dependencies]
+# Core synchronization algorithm
+multi-stream-synchronizer = { path = "multi-stream-synchronizer", features = ["tokio"] }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+futures = "0.3"
+
+# ROS2 client library
+rclrs = "0.6"
+
+# ROS2 message types (versions patched by ros2_cargo_config.toml)
+std_msgs = "*"
+sensor_msgs = "*"
+builtin_interfaces = "*"
+
+# Configuration parsing
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+humantime-serde = "1.1"
+
+# Error handling & logging
+eyre = "0.6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+indexmap = { version = "2", features = ["serde"] }
+
+[profile.test-release]
+inherits = "release"
+debug = true

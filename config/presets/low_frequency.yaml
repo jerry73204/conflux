@@ -1,0 +1,23 @@
+# Preset: Low-frequency sensors
+#
+# Optimized for: GPS, odometry, and other sensors running at 1-10Hz
+# Characteristics:
+#   - Relaxed time windows (~200ms)
+#   - Longer staleness thresholds
+#   - Smaller buffer sizes (less data volume)
+
+inputs: []  # USER MUST FILL IN
+
+output:
+  topic: /synchronized
+
+sync:
+  window_size: 200ms
+  buffer_size: 16
+
+staleness:
+  preset: low_frequency
+
+qos:
+  reliability: best_effort
+  history_depth: 1

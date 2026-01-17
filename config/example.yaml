@@ -1,0 +1,52 @@
+# msync configuration example
+#
+# This file configures the multi-stream synchronization node.
+# Copy this file and modify it for your use case.
+#
+# REQUIRED: All fields under 'inputs', 'output', and 'sync' must be specified.
+
+# Input topics to synchronize
+# Each input requires:
+#   - topic: The ROS2 topic name
+#   - type: The message type (must have a std_msgs/Header)
+inputs:
+  - topic: /camera/image_raw
+    type: sensor_msgs/msg/Image
+  - topic: /lidar/points
+    type: sensor_msgs/msg/PointCloud2
+  # Add more inputs as needed:
+  # - topic: /imu/data
+  #   type: sensor_msgs/msg/Imu
+
+# Output topic for synchronized message batches
+output:
+  topic: /synchronized
+
+# Synchronization parameters (REQUIRED)
+sync:
+  # Time window for grouping messages
+  # Messages within this window are considered synchronized
+  # Format: human-readable duration (e.g., 50ms, 100ms, 1s)
+  window_size: 50ms
+
+  # Maximum messages to buffer per input stream
+  # Larger buffers handle more jitter but use more memory
+  buffer_size: 64
+
+# Staleness detection (optional but recommended)
+# Prevents memory buildup when streams have different rates or go offline
+staleness:
+  # Preset configuration options:
+  #   - high_frequency: For sensors @ 10-30Hz (tight windows, aggressive cleanup)
+  #   - low_frequency: For sensors @ 1-10Hz (relaxed windows)
+  #   - batch: For offline/rosbag processing (large buffers, lazy cleanup)
+  preset: high_frequency
+
+# QoS settings (optional)
+# Defaults to sensor_data profile if not specified
+qos:
+  # Reliability: best_effort (for sensors) or reliable (for commands)
+  reliability: best_effort
+
+  # History depth: how many messages to keep
+  history_depth: 1

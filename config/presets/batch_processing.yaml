@@ -1,0 +1,23 @@
+# Preset: Batch/offline processing
+#
+# Optimized for: Processing recorded data (rosbags) offline
+# Characteristics:
+#   - Large time windows for tolerance
+#   - Large buffers to handle bursty playback
+#   - Relaxed staleness (data arrives in bursts)
+
+inputs: []  # USER MUST FILL IN
+
+output:
+  topic: /synchronized
+
+sync:
+  window_size: 500ms
+  buffer_size: 128
+
+staleness:
+  preset: batch
+
+qos:
+  reliability: reliable
+  history_depth: 10
