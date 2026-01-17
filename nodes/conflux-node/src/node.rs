@@ -1,12 +1,13 @@
 //! ConfluxNode implementation.
 
-use crate::config::{Config, Reliability};
-use crate::message::{SynchronizedGroup, TimestampedMessage};
-use crate::subscriber::{DynamicSubscriptionHandle, create_subscriptions};
+use crate::config::{Config, InputConfig, Reliability};
+use conflux_ros2::conflux_core::sync;
+use conflux_ros2::{
+    create_dynamic_subscription, DynamicSubscriptionHandle, SynchronizedGroup, TimestampedMessage,
+};
 use eyre::{Result, WrapErr};
 use futures::stream::{self, TryStreamExt};
 use indexmap::IndexMap;
-use multi_stream_synchronizer::sync;
 use rclrs::{Node, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy};
 use tokio::sync::mpsc;
 use tracing::{debug, info};
@@ -35,7 +36,7 @@ impl ConfluxNode {
         // Build QoS profile from config
         let qos = build_qos_profile(&config);
 
-        // Create subscriptions for all input topics using the generic factory
+        // Create subscriptions for all input topics
         let subscriptions = create_subscriptions(&node, &config.inputs, qos, message_tx)?;
 
         info!(
@@ -93,6 +94,24 @@ impl ConfluxNode {
 
         result.wrap_err("Synchronization stream ended with error")
     }
+}
+
+/// Create subscriptions for all configured input topics.
+fn create_subscriptions(
+    node: &Node,
+    inputs: &[InputConfig],
+    qos: QoSProfile,
+    tx: mpsc::UnboundedSender<(String, TimestampedMessage)>,
+) -> Result<Vec<DynamicSubscriptionHandle>> {
+    let mut subscriptions = Vec::with_capacity(inputs.len());
+
+    for input in inputs {
+        let subscription =
+            create_dynamic_subscription(node, &input.topic, &input.msg_type, qos, tx.clone())?;
+        subscriptions.push(subscription);
+    }
+
+    Ok(subscriptions)
 }
 
 /// Handle a synchronized group of messages.

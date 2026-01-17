@@ -1,0 +1,43 @@
+[package]
+name = "conflux-node"
+version = "0.2.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jerry73204/conflux"
+description = "Multi-stream message synchronization ROS2 node"
+
+[dependencies]
+# ROS2 integration utilities (includes conflux-core)
+conflux-ros2 = { path = "../../crates/conflux-ros2" }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+futures = "0.3"
+
+# ROS2 client library (using commit 562e815 for DynamicMessage/DynamicSubscription support)
+rclrs = { git = "https://github.com/ros2-rust/ros2_rust", rev = "562e815" }
+
+# ROS2 message types (versions patched by ros2_cargo_config.toml)
+std_msgs = "*"
+sensor_msgs = "*"
+builtin_interfaces = "*"
+
+# Configuration parsing
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+humantime-serde = "1.1"
+
+# Error handling & logging
+eyre = "0.6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+indexmap = { version = "2", features = ["serde"] }
+
+[package.metadata.ros]
+install_to_share = ["launch", "config"]
+
+[profile.test-release]
+inherits = "release"
+debug = true

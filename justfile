@@ -1,5 +1,5 @@
-# conflux - Multi-stream synchronization ROS2 node
-# Built with colcon-cargo-ros2
+# conflux - Multi-stream synchronization workspace
+# Built with colcon-cargo-ros2 for ROS2 integration
 
 # Show available commands
 default:
@@ -17,9 +17,14 @@ setup:
 # Build
 # ==============================================================================
 
-# Build with colcon (ROS2 build system)
+# Build core library only (pure Rust, no ROS2)
+build-core:
+    cargo build -p conflux-core
+
+# Build ROS2 node with colcon
 build:
     colcon build \
+        --packages-select conflux \
         --symlink-install \
         --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         --cargo-args --profile=test-release
@@ -27,6 +32,7 @@ build:
 # Build with verbose cargo output
 build-verbose:
     colcon build \
+        --packages-select conflux \
         --symlink-install \
         --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         --cargo-args --profile=test-release -vv
@@ -34,6 +40,7 @@ build-verbose:
 # Build in debug mode (faster compilation)
 build-debug:
     colcon build \
+        --packages-select conflux \
         --symlink-install \
         --cmake-args -DCMAKE_BUILD_TYPE=Debug
 
@@ -49,13 +56,17 @@ format:
 format-check:
     cargo +nightly fmt --check
 
-# Run clippy lints (requires prior build to generate ros2_cargo_config.toml)
+# Run clippy lints on core library
+lint-core:
+    cargo clippy -p conflux-core --all-targets -- -D warnings
+
+# Run clippy lints on full workspace (requires prior build for ros2_cargo_config.toml)
 lint:
     @if [ -f build/ros2_cargo_config.toml ]; then \
         cargo clippy --config build/ros2_cargo_config.toml --all-targets -- -D warnings; \
     else \
         echo "Note: build/ros2_cargo_config.toml not found. Run 'just build' first for full lint."; \
-        cargo clippy --all-targets -- -D warnings; \
+        cargo clippy -p conflux-core --all-targets -- -D warnings; \
     fi
 
 # Run all checks (format + lint)
@@ -65,12 +76,20 @@ check: format-check lint
 # Testing
 # ==============================================================================
 
-# Run tests with cargo nextest
+# Run core library tests with cargo nextest
+test-core:
+    cargo nextest run -p conflux-core --features tokio --no-fail-fast
+
+# Run core library tests with cargo test
+test-core-cargo:
+    cargo test -p conflux-core --features tokio
+
+# Run full workspace tests with cargo nextest (requires prior build)
 test:
     @if [ -f build/ros2_cargo_config.toml ]; then \
         cargo nextest run --config build/ros2_cargo_config.toml --cargo-profile test-release --no-fail-fast; \
     else \
-        cargo nextest run --cargo-profile test-release --no-fail-fast; \
+        cargo nextest run -p conflux-core --features tokio --no-fail-fast; \
     fi
 
 # Run tests with standard cargo test (if nextest not available)
@@ -78,12 +97,11 @@ test-cargo:
     @if [ -f build/ros2_cargo_config.toml ]; then \
         cargo test --config build/ros2_cargo_config.toml --profile test-release; \
     else \
-        cargo test --profile test-release; \
+        cargo test -p conflux-core --features tokio; \
     fi
 
-# Run multi-stream-synchronizer library tests
-test-lib:
-    cargo test -p multi-stream-synchronizer --features tokio
+# Alias for test-core (backwards compatibility)
+test-lib: test-core
 
 # ==============================================================================
 # Running
@@ -91,7 +109,7 @@ test-lib:
 
 # Run the node (after build, requires .envrc sourced)
 run:
-    ros2 run conflux conflux
+    ros2 run conflux conflux-node
 
 # ==============================================================================
 # Maintenance
@@ -108,7 +126,3 @@ clean-rust:
 # Clean only colcon artifacts
 clean-colcon:
     rm -rf build install log
-
-# Update git submodules
-submodules:
-    git submodule update --init --recursive

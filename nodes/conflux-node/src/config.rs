@@ -89,21 +89,23 @@ impl Config {
         Ok(())
     }
 
-    /// Convert to multi-stream-synchronizer Config.
-    pub fn to_sync_config(&self) -> multi_stream_synchronizer::Config {
+    /// Convert to conflux-core Config.
+    pub fn to_sync_config(&self) -> conflux_ros2::conflux_core::Config {
+        use conflux_ros2::conflux_core;
+
         let staleness_config = self.staleness.as_ref().map(|s| match s.preset {
             StalenessPreset::HighFrequency => {
-                multi_stream_synchronizer::StalenessConfig::high_frequency()
+                conflux_core::StalenessConfig::high_frequency()
             }
             StalenessPreset::LowFrequency => {
-                multi_stream_synchronizer::StalenessConfig::low_frequency()
+                conflux_core::StalenessConfig::low_frequency()
             }
             StalenessPreset::Batch => {
-                multi_stream_synchronizer::StalenessConfig::batch_processing()
+                conflux_core::StalenessConfig::batch_processing()
             }
         });
 
-        multi_stream_synchronizer::Config {
+        conflux_core::Config {
             window_size: self.sync.window_size,
             start_time: None,
             buf_size: self.sync.buffer_size,

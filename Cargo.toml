@@ -1,41 +1,45 @@
-[package]
-name = "conflux"
-version = "0.1.0"
-edition = "2024"
-description = "Multi-stream message synchronization ROS2 node"
-license = "MIT OR Apache-2.0"
+[workspace]
+resolver = "2"
+members = [
+    "crates/conflux-core",
+]
+# Exclude ROS2 crates from workspace - they have wildcard dependencies (*) that
+# get patched by colcon at build time. Build with: just build
+exclude = [
+    "crates/conflux-ros2",
+    "nodes/conflux-node",
+]
 
-[dependencies]
-# Core synchronization algorithm
-multi-stream-synchronizer = { path = "multi-stream-synchronizer", features = ["tokio"] }
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jerry73204/conflux"
+
+[workspace.dependencies]
+# Internal crates
+conflux-core = { path = "crates/conflux-core" }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 futures = "0.3"
-
-# ROS2 client library (using commit 562e815 for DynamicMessage/DynamicSubscription support)
-rclrs = { git = "https://github.com/ros2-rust/ros2_rust", rev = "562e815" }
-
-# ROS2 message types (versions patched by ros2_cargo_config.toml)
-std_msgs = "*"
-sensor_msgs = "*"
-builtin_interfaces = "*"
-
-# Configuration parsing
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-humantime-serde = "1.1"
 
 # Error handling & logging
 eyre = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Utilities
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+humantime-serde = "1.1"
 indexmap = { version = "2", features = ["serde"] }
 
-[package.metadata.ros]
-install_to_share = ["launch", "config"]
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+itertools = "0.11"
+flume = "0.11"
+collected = "0.4"
 
 [profile.test-release]
 inherits = "release"

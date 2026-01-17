@@ -1,0 +1,35 @@
+[package]
+name = "conflux-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors = ["jerry73204 <jerry73204@gmail.com>"]
+description = "A Rust library for synchronizing timestamped messages from multiple data streams using time-window based grouping"
+readme = "README.md"
+keywords = ["synchronization", "streams", "real-time", "time-window", "sensor-fusion"]
+categories = ["algorithms", "asynchronous", "data-structures"]
+
+[features]
+default = []
+tokio = []
+
+[dependencies]
+futures.workspace = true
+itertools.workspace = true
+chrono.workspace = true
+indexmap.workspace = true
+humantime-serde.workspace = true
+collected.workspace = true
+flume.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+eyre.workspace = true
+
+[dev-dependencies]
+rand = "0.9"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[[test]]
+name = "staleness_tokio_tests"
+required-features = ["tokio"]

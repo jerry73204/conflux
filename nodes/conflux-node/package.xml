@@ -2,18 +2,18 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>conflux</name>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <description>
     Multi-stream message synchronization ROS2 node.
     Synchronizes messages from multiple input topics within configurable time windows
-    using the multi-stream-synchronizer algorithm.
+    using the conflux-core algorithm.
   </description>
 
   <maintainer email="todo@example.com">TODO</maintainer>
   <license>MIT</license>
   <license>Apache-2.0</license>
 
-  <url type="repository">https://github.com/TODO/conflux</url>
+  <url type="repository">https://github.com/jerry73204/conflux</url>
 
   <!-- ROS2 client library for Rust -->
   <depend>rclrs</depend>

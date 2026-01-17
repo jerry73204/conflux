@@ -1,6 +1,6 @@
 //! conflux node entry point.
 
-use conflux::{Config, ConfluxNode};
+use conflux_node::{Config, ConfluxNode};
 use eyre::{Result, WrapErr, bail};
 use rclrs::{Context, CreateBasicExecutor, RclrsErrorFilter, SpinOptions};
 use std::sync::Arc;

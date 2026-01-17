@@ -4,8 +4,30 @@
 //! and DynamicSubscription functionality. Messages are subscribed to based on
 //! their type name string (e.g., "sensor_msgs/msg/Image") without requiring
 //! compile-time type information.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use conflux_ros2::{create_dynamic_subscription, TimestampedMessage};
+//! use tokio::sync::mpsc;
+//!
+//! let (tx, mut rx) = mpsc::unbounded_channel();
+//!
+//! let subscription = create_dynamic_subscription(
+//!     &node,
+//!     "/camera/image",
+//!     "sensor_msgs/msg/Image",
+//!     qos_profile,
+//!     tx,
+//! )?;
+//!
+//! // Messages arrive through the channel
+//! while let Some((topic, msg)) = rx.recv().await {
+//!     println!("Received message on {} at {:?}", topic, msg.timestamp);
+//! }
+//! ```
 
-use crate::message::TimestampedMessage;
+use crate::message::{ros_time_to_duration, TimestampedMessage};
 use eyre::{Result, WrapErr};
 use rclrs::{
     DynamicMessage, DynamicSubscription, MessageInfo, MessageTypeName, Node, QoSProfile,
@@ -17,7 +39,8 @@ use tracing::{error, info, warn};
 /// A type-erased subscription handle for dynamic message types.
 ///
 /// This wraps the rclrs DynamicSubscription and keeps it alive while
-/// the node is running.
+/// the node is running. The subscription automatically extracts timestamps
+/// from message headers and sends [`TimestampedMessage`] through the channel.
 pub struct DynamicSubscriptionHandle {
     /// The underlying dynamic subscription (kept alive by Arc).
     _subscription: DynamicSubscription,
@@ -34,7 +57,15 @@ pub struct DynamicSubscriptionHandle {
 /// - `header.stamp.nanosec` (u32)
 ///
 /// Returns `None` if the message doesn't have a standard header.
-fn extract_header_stamp(msg: &DynamicMessage) -> Option<(i32, u32)> {
+///
+/// # Example
+///
+/// ```ignore
+/// if let Some((sec, nanosec)) = extract_header_stamp(&dynamic_msg) {
+///     let timestamp = ros_time_to_duration(sec, nanosec);
+/// }
+/// ```
+pub fn extract_header_stamp(msg: &DynamicMessage) -> Option<(i32, u32)> {
     // Get the header field - should be Simple(Message(...))
     let header = msg.get("header")?;
 
@@ -69,20 +100,47 @@ fn extract_header_stamp(msg: &DynamicMessage) -> Option<(i32, u32)> {
 }
 
 /// Create a dynamic subscription for any message type at runtime.
-fn create_dynamic_subscription(
+///
+/// This creates a subscription that receives messages of the specified type
+/// and sends [`TimestampedMessage`] through the provided channel. The timestamp
+/// is automatically extracted from the message's `header.stamp` field.
+///
+/// # Arguments
+///
+/// * `node` - The ROS2 node to create the subscription on
+/// * `topic` - The topic name to subscribe to
+/// * `msg_type` - The message type (e.g., "sensor_msgs/msg/Image" or "sensor_msgs/Image")
+/// * `qos` - QoS profile for the subscription
+/// * `tx` - Channel sender for received messages
+///
+/// # Example
+///
+/// ```ignore
+/// let (tx, rx) = mpsc::unbounded_channel();
+/// let handle = create_dynamic_subscription(
+///     &node,
+///     "/camera/image",
+///     "sensor_msgs/msg/Image",
+///     QoSProfile::sensor_data_default(),
+///     tx,
+/// )?;
+/// ```
+pub fn create_dynamic_subscription(
     node: &Node,
     topic: &str,
     msg_type: &str,
     qos: QoSProfile,
     tx: mpsc::UnboundedSender<(String, TimestampedMessage)>,
 ) -> Result<DynamicSubscriptionHandle> {
-    // Parse the message type name
-    let message_type: MessageTypeName = msg_type
+    // Normalize and parse the message type name
+    let normalized_type = normalize_msg_type(msg_type);
+    let message_type: MessageTypeName = normalized_type
+        .as_str()
         .try_into()
         .wrap_err_with(|| format!("Invalid message type format: {}", msg_type))?;
 
     let topic_owned = topic.to_string();
-    let msg_type_owned = msg_type.to_string();
+    let msg_type_owned = normalized_type.clone();
 
     // Create subscription options
     let mut options = SubscriptionOptions::new(topic);
@@ -107,7 +165,7 @@ fn create_dynamic_subscription(
                     }
                 };
 
-                let timestamp = crate::message::ros_time_to_duration(sec, nanosec);
+                let timestamp = ros_time_to_duration(sec, nanosec);
 
                 // Create timestamped message
                 // Note: We store empty data for now - serialization can be added later
@@ -137,44 +195,37 @@ fn create_dynamic_subscription(
 
     info!(
         topic = %topic,
-        msg_type = %msg_type,
+        msg_type = %normalized_type,
         "Created dynamic subscription"
     );
 
     Ok(DynamicSubscriptionHandle {
         _subscription: subscription,
-        msg_type: msg_type.to_string(),
+        msg_type: normalized_type,
         topic: topic.to_string(),
     })
 }
 
-/// Create subscriptions for all configured input topics.
-///
-/// This function creates dynamic subscriptions based on the message type
-/// strings in the configuration. Any ROS2 message type can be used as long
-/// as the corresponding type support library is installed.
-pub fn create_subscriptions(
-    node: &Node,
-    inputs: &[crate::config::InputConfig],
-    qos: QoSProfile,
-    tx: mpsc::UnboundedSender<(String, TimestampedMessage)>,
-) -> Result<Vec<DynamicSubscriptionHandle>> {
-    let mut subscriptions = Vec::with_capacity(inputs.len());
-
-    for input in inputs {
-        // Normalize message type to full form
-        let msg_type = normalize_msg_type(&input.msg_type);
-
-        let subscription =
-            create_dynamic_subscription(node, &input.topic, &msg_type, qos, tx.clone())?;
-        subscriptions.push(subscription);
-    }
-
-    Ok(subscriptions)
-}
-
 /// Normalize message type to the full form (package/msg/Type).
-fn normalize_msg_type(msg_type: &str) -> String {
+///
+/// This accepts both short form (`sensor_msgs/Image`) and full form
+/// (`sensor_msgs/msg/Image`) and returns the full form.
+///
+/// # Example
+///
+/// ```
+/// use conflux_ros2::normalize_msg_type;
+///
+/// assert_eq!(
+///     normalize_msg_type("sensor_msgs/Image"),
+///     "sensor_msgs/msg/Image"
+/// );
+/// assert_eq!(
+///     normalize_msg_type("sensor_msgs/msg/Image"),
+///     "sensor_msgs/msg/Image"
+/// );
+/// ```
+pub fn normalize_msg_type(msg_type: &str) -> String {
     // If already in full form, return as-is
     if msg_type.contains("/msg/") {
         return msg_type.to_string();
