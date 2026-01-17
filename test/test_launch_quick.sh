@@ -1,5 +1,5 @@
 #!/bin/bash
-# Quick test of msync launch files
+# Quick test of conflux launch files
 # Tests that each launch file starts correctly and subscribes to expected topics
 
 set -e
@@ -12,7 +12,7 @@ test_launch() {
     echo "--- Testing $launch_file ---"
 
     # Start in background, redirect output
-    timeout 10 play_launch launch msync "$launch_file" > /tmp/msync_test.log 2>&1 &
+    timeout 10 play_launch launch conflux "$launch_file" > /tmp/conflux_test.log 2>&1 &
     local pid=$!
 
     # Wait for node to start
@@ -31,18 +31,18 @@ test_launch() {
 
     # Cleanup
     kill $pid 2>/dev/null || true
-    pkill -f "msync" 2>/dev/null || true
+    pkill -f "conflux" 2>/dev/null || true
     sleep 1
 }
 
 echo "=== Quick Launch File Tests ==="
 echo ""
 
-test_launch "msync.launch.xml" "msync"
-test_launch "realtime_sync.launch.xml" "msync_realtime"
-test_launch "offline_sync.launch.xml" "msync_offline"
-test_launch "multi_sensor_fusion.launch.xml" "msync_fusion"
-test_launch "stereo_camera.launch.xml" "msync_stereo"
-test_launch "low_frequency_localization.launch.xml" "msync_localization"
+test_launch "conflux.launch.xml" "conflux"
+test_launch "realtime_sync.launch.xml" "conflux_realtime"
+test_launch "offline_sync.launch.xml" "conflux_offline"
+test_launch "multi_sensor_fusion.launch.xml" "conflux_fusion"
+test_launch "stereo_camera.launch.xml" "conflux_stereo"
+test_launch "low_frequency_localization.launch.xml" "conflux_localization"
 
 echo "=== All tests completed ==="

@@ -1,4 +1,4 @@
-//! Configuration parsing and validation for the msync node.
+//! Configuration parsing and validation for the conflux node.
 
 use eyre::{Result, WrapErr, bail, ensure};
 use serde::Deserialize;

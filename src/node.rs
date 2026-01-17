@@ -1,4 +1,4 @@
-//! MsyncNode implementation.
+//! ConfluxNode implementation.
 
 use crate::config::{Config, Reliability};
 use crate::message::{SynchronizedGroup, TimestampedMessage};
@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, info};
 
 /// The multi-stream synchronization node.
-pub struct MsyncNode {
+pub struct ConfluxNode {
     /// The ROS2 node handle.
     _node: Node,
 
@@ -27,8 +27,8 @@ pub struct MsyncNode {
     config: Config,
 }
 
-impl MsyncNode {
-    /// Create a new MsyncNode with the given configuration.
+impl ConfluxNode {
+    /// Create a new ConfluxNode with the given configuration.
     pub fn new(node: Node, config: Config) -> Result<Self> {
         let (message_tx, message_rx) = mpsc::unbounded_channel();
 

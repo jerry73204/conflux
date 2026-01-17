@@ -6,7 +6,7 @@ Demonstrates synchronization of multiple sensor modalities with
 different update rates (camera 30Hz, LiDAR 10Hz, IMU 100Hz).
 
 Usage:
-    ros2 launch msync multi_sensor_fusion.launch.xml
+    ros2 launch conflux multi_sensor_fusion.launch.xml
 
 Scenario:
     - Camera at 30Hz (visual features)
@@ -21,10 +21,10 @@ Scenario:
 
   <!-- Config file path -->
   <let name="config_file"
-       value="$(find-pkg-share msync)/config/examples/multi_sensor_fusion.yaml"/>
+       value="$(find-pkg-share conflux)/config/examples/multi_sensor_fusion.yaml"/>
 
-  <!-- msync node -->
-  <node pkg="msync" exec="msync" name="msync_fusion" output="screen"
+  <!-- conflux node -->
+  <node pkg="conflux" exec="conflux" name="conflux_fusion" output="screen"
         args="--ros-args --log-level $(var log_level)">
     <param name="config_file" value="$(var config_file)"/>
   </node>

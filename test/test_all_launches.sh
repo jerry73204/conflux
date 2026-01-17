@@ -1,12 +1,12 @@
 #!/bin/bash
-# Test all msync launch files
+# Test all conflux launch files
 #
 # Tests that each launch file starts correctly and subscribes to expected topics
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MSYNC_DIR="$(dirname "$SCRIPT_DIR")"
+CONFLUX_DIR="$(dirname "$SCRIPT_DIR")"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -25,7 +25,7 @@ test_launch() {
     echo "=== Testing $launch_file ==="
 
     # Start in background
-    timeout 8 play_launch launch msync "$launch_file" > /dev/null 2>&1 &
+    timeout 8 play_launch launch conflux "$launch_file" > /dev/null 2>&1 &
     local pid=$!
     sleep 3
 
@@ -54,39 +54,39 @@ test_launch() {
     else
         echo -e "${RED}✗ Node /$node_name not found${NC}"
         # Check error log
-        if [ -f "$MSYNC_DIR/play_log/latest/node/$node_name/err" ]; then
+        if [ -f "$CONFLUX_DIR/play_log/latest/node/$node_name/err" ]; then
             echo "Error log:"
-            cat "$MSYNC_DIR/play_log/latest/node/$node_name/err"
+            cat "$CONFLUX_DIR/play_log/latest/node/$node_name/err"
         fi
         ((FAILED++))
     fi
 
     # Cleanup
     kill $pid 2>/dev/null || true
-    pkill -9 -f "msync" 2>/dev/null || true
+    pkill -9 -f "conflux" 2>/dev/null || true
     sleep 1
 }
 
 echo "=========================================="
-echo "  msync Launch File Tests"
+echo "  conflux Launch File Tests"
 echo "=========================================="
 
-test_launch "msync.launch.xml" "msync" \
+test_launch "conflux.launch.xml" "conflux" \
     "/camera/image_raw" "/lidar/points"
 
-test_launch "realtime_sync.launch.xml" "msync_realtime" \
+test_launch "realtime_sync.launch.xml" "conflux_realtime" \
     "/camera/image_raw" "/lidar/points"
 
-test_launch "offline_sync.launch.xml" "msync_offline" \
+test_launch "offline_sync.launch.xml" "conflux_offline" \
     "/camera/image_raw" "/lidar/points"
 
-test_launch "multi_sensor_fusion.launch.xml" "msync_fusion" \
+test_launch "multi_sensor_fusion.launch.xml" "conflux_fusion" \
     "/camera/image_raw" "/lidar/points" "/imu/data"
 
-test_launch "stereo_camera.launch.xml" "msync_stereo" \
+test_launch "stereo_camera.launch.xml" "conflux_stereo" \
     "/stereo/left/image_raw" "/stereo/right/image_raw"
 
-test_launch "low_frequency_localization.launch.xml" "msync_localization" \
+test_launch "low_frequency_localization.launch.xml" "conflux_localization" \
     "/gps/fix" "/odom" "/imu/mag"
 
 echo ""

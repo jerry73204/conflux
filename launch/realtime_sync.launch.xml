@@ -6,7 +6,7 @@ Demonstrates camera + LiDAR synchronization with latency constraints.
 This scenario prioritizes bounded latency over perfect matching.
 
 Usage:
-    ros2 launch msync realtime_sync.launch.xml
+    ros2 launch conflux realtime_sync.launch.xml
 
 Scenario:
     - Camera at 30Hz, LiDAR at 10Hz
@@ -21,10 +21,10 @@ Scenario:
 
   <!-- Config file path -->
   <let name="config_file"
-       value="$(find-pkg-share msync)/config/examples/realtime_camera_lidar.yaml"/>
+       value="$(find-pkg-share conflux)/config/examples/realtime_camera_lidar.yaml"/>
 
-  <!-- msync node -->
-  <node pkg="msync" exec="msync" name="msync_realtime" output="screen"
+  <!-- conflux node -->
+  <node pkg="conflux" exec="conflux" name="conflux_realtime" output="screen"
         args="--ros-args --log-level $(var log_level)">
     <param name="config_file" value="$(var config_file)"/>
   </node>

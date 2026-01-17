@@ -1,4 +1,4 @@
-# msync - Multi-stream synchronization ROS2 node
+# conflux - Multi-stream synchronization ROS2 node
 # Built with colcon-cargo-ros2
 
 # Show available commands
@@ -91,7 +91,7 @@ test-lib:
 
 # Run the node (after build, requires .envrc sourced)
 run:
-    ros2 run msync msync
+    ros2 run conflux conflux
 
 # ==============================================================================
 # Maintenance

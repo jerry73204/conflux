@@ -8,10 +8,10 @@ and uses large buffers to ensure no messages are dropped unnecessarily.
 
 Usage:
     # Start synchronizer, then play rosbag separately
-    ros2 launch msync offline_sync.launch.xml
+    ros2 launch conflux offline_sync.launch.xml
 
     # With integrated rosbag playback
-    ros2 launch msync offline_sync.launch.xml bag:=/path/to/recording
+    ros2 launch conflux offline_sync.launch.xml bag:=/path/to/recording
 
 Scenario:
     - Processing recorded sensor data from rosbag
@@ -26,10 +26,10 @@ Scenario:
 
   <!-- Config file path -->
   <let name="config_file"
-       value="$(find-pkg-share msync)/config/examples/offline_exact_match.yaml"/>
+       value="$(find-pkg-share conflux)/config/examples/offline_exact_match.yaml"/>
 
-  <!-- msync node -->
-  <node pkg="msync" exec="msync" name="msync_offline" output="screen"
+  <!-- conflux node -->
+  <node pkg="conflux" exec="conflux" name="conflux_offline" output="screen"
         args="--ros-args --log-level $(var log_level)">
     <param name="config_file" value="$(var config_file)"/>
   </node>

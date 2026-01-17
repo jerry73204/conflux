@@ -14,7 +14,7 @@ Run `direnv allow` in the project directory if not already done. All commands in
 
 ## Project Overview
 
-msync is a ROS2 node written in Rust that synchronizes messages from multiple input topics within configurable time windows. It uses the `multi-stream-synchronizer` library (included as a git submodule) to perform the synchronization algorithm.
+conflux is a ROS2 node written in Rust that synchronizes messages from multiple input topics within configurable time windows. It uses the `multi-stream-synchronizer` library (included as a git submodule) to perform the synchronization algorithm.
 
 ## Build System
 
@@ -88,7 +88,7 @@ just submodules
 ## Project Structure
 
 ```
-msync/
+conflux/
 ├── Cargo.toml              # Rust package manifest
 ├── package.xml             # ROS2 package manifest
 ├── justfile                # Build and development commands
@@ -106,7 +106,7 @@ msync/
 │       ├── low_frequency_localization.yaml
 │       └── stereo_camera.yaml
 ├── launch/
-│   ├── msync.launch.xml             # Basic launch (config file arg)
+│   ├── conflux.launch.xml             # Basic launch (config file arg)
 │   ├── realtime_sync.launch.xml     # Real-time latency-constrained
 │   ├── offline_sync.launch.xml      # Offline rosbag processing
 │   ├── multi_sensor_fusion.launch.xml
@@ -117,7 +117,7 @@ msync/
 │   ├── lib.rs              # Library root
 │   ├── config.rs           # Configuration parsing
 │   ├── message.rs          # TimestampedMessage wrapper
-│   ├── node.rs             # MsyncNode implementation
+│   ├── node.rs             # ConfluxNode implementation
 │   └── subscriber.rs       # Dynamic subscription factory
 ├── test/
 │   ├── test_all_launches.sh    # Tests all launch files
@@ -192,23 +192,23 @@ See `config/example.yaml` for full documentation.
 
 ## Launch Files
 
-Launch files (XML format) are installed to `share/msync/launch/` and can be run with:
+Launch files (XML format) are installed to `share/conflux/launch/` and can be run with:
 
 ```bash
 # Basic launch with config file
-ros2 launch msync msync.launch.xml config:=/path/to/config.yaml
+ros2 launch conflux conflux.launch.xml config:=/path/to/config.yaml
 
 # Real-time synchronization (camera + LiDAR, latency-constrained)
-ros2 launch msync realtime_sync.launch.xml
+ros2 launch conflux realtime_sync.launch.xml
 
 # Offline processing with rosbag
-ros2 launch msync offline_sync.launch.xml bag:=/path/to/recording
+ros2 launch conflux offline_sync.launch.xml bag:=/path/to/recording
 
 # Multi-sensor fusion (camera + LiDAR + IMU)
-ros2 launch msync multi_sensor_fusion.launch.xml
+ros2 launch conflux multi_sensor_fusion.launch.xml
 
 # Stereo camera (tight 5ms window)
-ros2 launch msync stereo_camera.launch.xml
+ros2 launch conflux stereo_camera.launch.xml
 ```
 
 **Scenario comparison:**

@@ -1,7 +1,7 @@
-//! msync node entry point.
+//! conflux node entry point.
 
+use conflux::{Config, ConfluxNode};
 use eyre::{Result, WrapErr, bail};
-use msync::{Config, MsyncNode};
 use rclrs::{Context, CreateBasicExecutor, RclrsErrorFilter, SpinOptions};
 use std::sync::Arc;
 use tracing::{error, info};
@@ -22,7 +22,7 @@ fn main() -> Result<()> {
 
     // Create the node
     let node = executor
-        .create_node("msync")
+        .create_node("conflux")
         .map_err(|e| eyre::eyre!("Failed to create ROS2 node: {}", e))?;
 
     // Get config file path from parameter
@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     if config_file.is_empty() {
         bail!(
             "Parameter 'config_file' is required.\n\
-             Usage: ros2 run msync msync --ros-args -p config_file:=/path/to/config.yaml"
+             Usage: ros2 run conflux conflux --ros-args -p config_file:=/path/to/config.yaml"
         );
     }
 
@@ -52,8 +52,8 @@ fn main() -> Result<()> {
         "Configuration loaded"
     );
 
-    // Create the msync node
-    let msync_node = MsyncNode::new(node.clone(), config)?;
+    // Create the conflux node
+    let conflux_node = ConfluxNode::new(node.clone(), config)?;
 
     // Create tokio runtime and run the node
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -63,12 +63,12 @@ fn main() -> Result<()> {
 
     // Spawn the synchronization task
     let sync_handle = runtime.spawn(async move {
-        if let Err(e) = msync_node.run().await {
+        if let Err(e) = conflux_node.run().await {
             error!(error = %e, "Synchronization task failed");
         }
     });
 
-    info!("msync node started, spinning...");
+    info!("conflux node started, spinning...");
 
     // Spin the ROS2 executor (this blocks and processes callbacks)
     // The sync task runs in the background on the tokio runtime
@@ -82,6 +82,6 @@ fn main() -> Result<()> {
         let _ = sync_handle.await;
     });
 
-    info!("msync node shutting down");
+    info!("conflux node shutting down");
     Ok(())
 }

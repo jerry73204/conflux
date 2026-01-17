@@ -1,33 +1,33 @@
 #!/bin/bash
-# Test basic msync launch with mock publishers
+# Test basic conflux launch with mock publishers
 #
 # This script:
-# 1. Launches msync with the example config
+# 1. Launches conflux with the example config
 # 2. Publishes mock Image and PointCloud2 messages
 # 3. Checks for synchronized output
 
 set -e
 
-echo "=== Testing msync.launch.xml ==="
+echo "=== Testing conflux.launch.xml ==="
 echo ""
 
 # Create a temporary directory for logs
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
-# Start msync in background
-echo "Starting msync node..."
-play_launch launch msync msync.launch.xml log_level:=debug &
+# Start conflux in background
+echo "Starting conflux node..."
+play_launch launch conflux conflux.launch.xml log_level:=debug &
 LAUNCH_PID=$!
 sleep 3
 
 # Check if node is running
-if ! ros2 node list | grep -q msync; then
-    echo "ERROR: msync node not found"
+if ! ros2 node list | grep -q conflux; then
+    echo "ERROR: conflux node not found"
     kill $LAUNCH_PID 2>/dev/null || true
     exit 1
 fi
-echo "msync node is running"
+echo "conflux node is running"
 
 # List topics
 echo ""
@@ -72,11 +72,11 @@ ros2 topic info /synchronized 2>/dev/null || echo "  Output topic not yet create
 # Show node info
 echo ""
 echo "Node info:"
-ros2 node info /msync 2>/dev/null | head -20
+ros2 node info /conflux 2>/dev/null | head -20
 
 # Cleanup
 echo ""
-echo "Stopping msync..."
+echo "Stopping conflux..."
 kill $LAUNCH_PID 2>/dev/null || true
 wait $LAUNCH_PID 2>/dev/null || true
 

@@ -1,4 +1,4 @@
-//! msync - Multi-stream message synchronization ROS2 node.
+//! conflux - Multi-stream message synchronization ROS2 node.
 //!
 //! This library provides a ROS2 node that synchronizes messages from multiple
 //! input topics within configurable time windows using the
@@ -35,5 +35,5 @@ pub mod subscriber;
 
 pub use config::Config;
 pub use message::{SynchronizedGroup, TimestampedMessage};
-pub use node::MsyncNode;
+pub use node::ConfluxNode;
 pub use subscriber::DynamicSubscriptionHandle;
