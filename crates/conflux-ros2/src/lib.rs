@@ -93,7 +93,13 @@
 pub mod message;
 pub mod subscriber;
 
-// Re-export main types
+// New ROS2-specific synchronization modules (DynamicMessage ownership path)
+pub mod ros2_message;
+pub mod ros2_publisher;
+pub mod ros2_sync_node;
+pub mod ros2_sync_state;
+
+// Re-export main types (legacy API)
 pub use message::{
     duration_to_ros_time, ros_time_to_duration, SynchronizedGroup, TimestampedMessage,
 };
@@ -101,6 +107,13 @@ pub use subscriber::{
     create_dynamic_subscription, extract_header_stamp, normalize_msg_type,
     DynamicSubscriptionHandle,
 };
+
+// Re-export new ROS2-specific types
+pub use ros2_message::Ros2Message;
+pub use ros2_publisher::Ros2PublisherManager;
+pub use ros2_sync_node::{Ros2SyncConfig, Ros2SyncRunner};
+pub use ros2_sync_state::{Ros2SyncState, SyncStats};
+pub use subscriber::create_ros2_subscription;
 
 // Re-export conflux-core for convenience
 pub use conflux_core;

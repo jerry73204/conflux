@@ -28,6 +28,7 @@
 //! ```
 
 use crate::message::{ros_time_to_duration, TimestampedMessage};
+use crate::ros2_message::Ros2Message;
 use eyre::{Result, WrapErr};
 use rclrs::{
     DynamicMessage, DynamicSubscription, MessageInfo, MessageTypeName, Node, QoSProfile,
@@ -237,6 +238,120 @@ pub fn normalize_msg_type(msg_type: &str) -> String {
     } else {
         msg_type.to_string()
     }
+}
+
+/// Create a dynamic subscription that passes DynamicMessage ownership.
+///
+/// Unlike [`create_dynamic_subscription`], this function sends the full
+/// [`Ros2Message`] which owns the [`DynamicMessage`]. This is necessary
+/// for synchronization and republishing, as `DynamicMessage` does not
+/// implement `Clone`.
+///
+/// # Arguments
+///
+/// * `node` - The ROS2 node to create the subscription on
+/// * `topic` - The topic name to subscribe to
+/// * `msg_type` - The message type (e.g., "sensor_msgs/msg/Image")
+/// * `qos` - QoS profile for the subscription
+/// * `tx` - Channel sender for received messages (ownership transferred)
+///
+/// # Example
+///
+/// ```ignore
+/// let (tx, rx) = mpsc::unbounded_channel();
+/// let handle = create_ros2_subscription(
+///     &node,
+///     "/camera/image",
+///     "sensor_msgs/msg/Image",
+///     QoSProfile::sensor_data_default(),
+///     tx,
+/// )?;
+///
+/// // Messages arrive with full DynamicMessage ownership
+/// while let Some(ros2_msg) = rx.recv().await {
+///     // Can republish the message later
+///     let dynamic_msg = ros2_msg.into_message();
+///     publisher.publish(dynamic_msg)?;
+/// }
+/// ```
+pub fn create_ros2_subscription(
+    node: &Node,
+    topic: &str,
+    msg_type: &str,
+    qos: QoSProfile,
+    tx: mpsc::UnboundedSender<Ros2Message>,
+) -> Result<DynamicSubscriptionHandle> {
+    // Normalize and parse the message type name
+    let normalized_type = normalize_msg_type(msg_type);
+    let message_type: MessageTypeName = normalized_type
+        .as_str()
+        .try_into()
+        .wrap_err_with(|| format!("Invalid message type format: {}", msg_type))?;
+
+    let topic_owned = topic.to_string();
+    let msg_type_owned = normalized_type.clone();
+
+    // Create subscription options
+    let mut options = SubscriptionOptions::new(topic);
+    options.qos = qos;
+
+    // Create the dynamic subscription
+    let subscription = node
+        .create_dynamic_subscription(
+            message_type,
+            options,
+            move |msg: DynamicMessage, _info: MessageInfo| {
+                // Extract timestamp from header
+                let (sec, nanosec) = match extract_header_stamp(&msg) {
+                    Some(stamp) => stamp,
+                    None => {
+                        warn!(
+                            topic = %topic_owned,
+                            msg_type = %msg_type_owned,
+                            "Message has no header.stamp, using zero timestamp"
+                        );
+                        (0, 0)
+                    }
+                };
+
+                let timestamp = ros_time_to_duration(sec, nanosec);
+
+                // Create Ros2Message with full DynamicMessage ownership
+                let ros2_msg = Ros2Message::new(
+                    topic_owned.clone(),
+                    timestamp,
+                    msg, // Transfer ownership of DynamicMessage
+                    (sec, nanosec),
+                );
+
+                if let Err(e) = tx.send(ros2_msg) {
+                    error!(
+                        topic = %topic_owned,
+                        msg_type = %msg_type_owned,
+                        error = %e,
+                        "Failed to send Ros2Message to channel"
+                    );
+                }
+            },
+        )
+        .wrap_err_with(|| {
+            format!(
+                "Failed to create dynamic subscription for topic '{}' with type '{}'",
+                topic, msg_type
+            )
+        })?;
+
+    info!(
+        topic = %topic,
+        msg_type = %normalized_type,
+        "Created ROS2 subscription (with message ownership)"
+    );
+
+    Ok(DynamicSubscriptionHandle {
+        _subscription: subscription,
+        msg_type: normalized_type,
+        topic: topic.to_string(),
+    })
 }
 
 #[cfg(test)]
