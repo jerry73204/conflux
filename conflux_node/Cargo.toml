@@ -8,7 +8,7 @@ description = "Multi-stream message synchronization ROS2 node"
 
 [dependencies]
 # ROS2 integration utilities (includes conflux-core)
-conflux-ros2 = { path = "../../crates/conflux-ros2" }
+conflux-ros2 = { path = "../crates/conflux-ros2" }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }

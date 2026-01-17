@@ -18,13 +18,15 @@ conflux is a **Cargo workspace** for multi-stream message synchronization. It co
 
 - **conflux-core** (`crates/conflux-core/`): Pure Rust library implementing the time-window based synchronization algorithm. No ROS2 dependencies - can be used in any Rust project.
 - **conflux-ros2** (`crates/conflux-ros2/`): ROS2 integration utilities - dynamic subscriptions, timestamp extraction, message wrappers. Enables embedding sync in your own ROS2 nodes.
-- **conflux-node** (`nodes/conflux-node/`): Standalone ROS2 node that uses conflux-ros2 to synchronize messages from multiple input topics.
+- **conflux_node** (`conflux_node/`): Standalone ROS2 node that uses conflux-ros2 to synchronize messages from multiple input topics.
+- **conflux_cpp** (`conflux_cpp/`): C++ ROS2 library wrapping conflux-core via FFI. For C++ ROS2 developers.
+- **conflux_py** (`conflux_py/`): Python ROS2 library wrapping conflux-core via PyO3. For Python ROS2 developers.
 
 This workspace structure enables:
 - Using the core algorithm as a standalone Rust library
-- Embedding synchronization in custom ROS2 nodes via conflux-ros2
-- Future C/C++ bindings (`conflux-ffi`)
-- Future Python bindings (`conflux-py`)
+- Embedding synchronization in custom ROS2 nodes via conflux-ros2 (Rust)
+- Using the synchronizer in C++ ROS2 nodes via conflux_cpp
+- Using the synchronizer in Python ROS2 nodes via conflux_py
 
 ## Build System
 
@@ -129,36 +131,67 @@ conflux/
 │   │       ├── sync.rs           # Synchronization logic
 │   │       └── types.rs          # Core traits (WithTimestamp, Key)
 │   │
-│   └── conflux-ros2/             # ROS2 integration utilities
+│   └── conflux-ros2/             # ROS2 integration utilities (Rust)
 │       ├── Cargo.toml
 │       └── src/
 │           ├── lib.rs            # Public API
 │           ├── message.rs        # TimestampedMessage, ROS time conversion
 │           └── subscriber.rs     # Dynamic subscription utilities
 │
-├── nodes/
-│   └── conflux-node/             # Standalone ROS2 node
+├── conflux_node/                 # Standalone ROS2 node (Rust)
+│   ├── Cargo.toml
+│   ├── package.xml               # ROS2 package manifest
+│   ├── config/                   # Configuration files
+│   │   ├── example.yaml
+│   │   ├── presets/
+│   │   └── examples/
+│   ├── launch/                   # ROS2 launch files
+│   │   └── *.launch.xml
+│   └── src/
+│       ├── main.rs               # Entry point
+│       ├── lib.rs                # Library root
+│       ├── config.rs             # YAML configuration parsing
+│       └── node.rs               # ConfluxNode implementation
+│
+├── conflux_cpp/                  # C++ ROS2 library
+│   ├── CMakeLists.txt
+│   ├── package.xml
+│   ├── include/conflux/          # Public C++ headers
+│   │   ├── synchronizer.hpp
+│   │   ├── types.hpp
+│   │   └── visibility.h
+│   ├── src/                      # C++ implementation
+│   │   ├── synchronizer.cpp
+│   │   ├── ffi_bridge.cpp
+│   │   └── ffi_bridge.hpp
+│   ├── examples/
+│   │   └── sync_node.cpp
+│   └── rust/                     # FFI crate (built by CMake)
 │       ├── Cargo.toml
-│       ├── package.xml           # ROS2 package manifest
-│       ├── config/               # Configuration files
-│       │   ├── example.yaml
-│       │   ├── presets/
-│       │   └── examples/
-│       ├── launch/               # ROS2 launch files
-│       │   └── *.launch.xml
-│       └── src/
-│           ├── main.rs           # Entry point
-│           ├── lib.rs            # Library root
-│           ├── config.rs         # YAML configuration parsing
-│           └── node.rs           # ConfluxNode implementation
+│       ├── cbindgen.toml
+│       └── src/lib.rs
+│
+├── conflux_py/                   # Python ROS2 library
+│   ├── pyproject.toml            # maturin build config
+│   ├── package.xml
+│   ├── setup.py
+│   ├── conflux_py/               # Python package
+│   │   ├── __init__.py
+│   │   ├── synchronizer.py       # ROS2Synchronizer wrapper
+│   │   └── _conflux_py.pyi       # Type stubs
+│   ├── examples/
+│   │   └── sync_node.py
+│   ├── test/
+│   │   └── test_synchronizer.py
+│   └── rust/                     # PyO3 crate (built by maturin)
+│       ├── Cargo.toml
+│       └── src/lib.rs
 │
 ├── test/
 │   └── *.sh                      # Test scripts
 │
 ├── docs/
 │   └── roadmap/                  # Development roadmap
-│       ├── phase-1-workspace-setup.md
-│       └── phase-2-ros2-library.md
 │
 └── external/                     # Reference repos (gitignored)
 ```

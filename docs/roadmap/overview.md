@@ -108,7 +108,7 @@ conflux_node         conflux_cpp          conflux_py
 | 2 | conflux-ros2 library extraction | ✅ Complete |
 | 3 | C++ bindings (conflux_cpp) | ✅ Complete |
 | 4 | Python bindings (conflux_py) | ✅ Complete |
-| 5 | Flatten directory structure | 📋 Planned |
+| 5 | Flatten directory structure | ✅ Complete |
 
 ## Phase Details
 
