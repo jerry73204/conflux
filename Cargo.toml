@@ -3,7 +3,7 @@ name = "conflux"
 version = "0.1.0"
 edition = "2024"
 description = "Multi-stream message synchronization ROS2 node"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 # Core synchronization algorithm
