@@ -1,6 +1,6 @@
 //! Configuration parsing and validation for the msync node.
 
-use eyre::{bail, ensure, Result, WrapErr};
+use eyre::{Result, WrapErr, bail, ensure};
 use serde::Deserialize;
 use std::{fs, path::Path, time::Duration};
 
@@ -41,7 +41,10 @@ impl Config {
 
     /// Validate the configuration.
     fn validate(&self) -> Result<()> {
-        ensure!(!self.inputs.is_empty(), "At least one input topic is required");
+        ensure!(
+            !self.inputs.is_empty(),
+            "At least one input topic is required"
+        );
 
         ensure!(
             !self.output.topic.is_empty(),

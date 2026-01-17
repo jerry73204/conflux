@@ -13,8 +13,8 @@ multi-stream-synchronizer = { path = "multi-stream-synchronizer", features = ["t
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 futures = "0.3"
 
-# ROS2 client library
-rclrs = "0.6"
+# ROS2 client library (using commit 562e815 for DynamicMessage/DynamicSubscription support)
+rclrs = { git = "https://github.com/ros2-rust/ros2_rust", rev = "562e815" }
 
 # ROS2 message types (versions patched by ros2_cargo_config.toml)
 std_msgs = "*"

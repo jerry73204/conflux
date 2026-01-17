@@ -2,7 +2,7 @@
 
 use crate::config::{Config, Reliability};
 use crate::message::{SynchronizedGroup, TimestampedMessage};
-use crate::subscriber::{create_subscriptions, AnySubscription};
+use crate::subscriber::{DynamicSubscriptionHandle, create_subscriptions};
 use eyre::{Result, WrapErr};
 use futures::stream::{self, TryStreamExt};
 use indexmap::IndexMap;
@@ -17,8 +17,8 @@ pub struct MsyncNode {
     _node: Node,
 
     /// Subscriptions for input topics (kept alive).
-    /// Uses type-erased subscriptions to support multiple message types.
-    _subscriptions: Vec<AnySubscription>,
+    /// Uses dynamic subscriptions for runtime message type support.
+    _subscriptions: Vec<DynamicSubscriptionHandle>,
 
     /// Channel receiver for incoming messages.
     message_rx: mpsc::UnboundedReceiver<(String, TimestampedMessage)>,
@@ -79,7 +79,11 @@ impl MsyncNode {
         // Process synchronized groups
         let result: Result<(), eyre::Error> = output_stream
             .try_for_each(|group: IndexMap<String, TimestampedMessage>| async move {
-                let timestamp = group.values().next().map(|m| m.timestamp).unwrap_or_default();
+                let timestamp = group
+                    .values()
+                    .next()
+                    .map(|m| m.timestamp)
+                    .unwrap_or_default();
                 let synced = SynchronizedGroup::new(timestamp, group);
 
                 handle_synchronized_group(synced);

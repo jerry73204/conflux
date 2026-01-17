@@ -15,28 +15,25 @@
 //!
 //! See the `config/example.yaml` file for a complete example.
 //!
-//! # Supported Message Types
+//! # Message Type Support
 //!
-//! The following message types are supported out of the box:
-//! - `sensor_msgs/msg/Image`
-//! - `sensor_msgs/msg/PointCloud2`
-//! - `sensor_msgs/msg/Imu`
-//! - `sensor_msgs/msg/LaserScan`
-//! - `sensor_msgs/msg/CameraInfo`
-//! - `sensor_msgs/msg/CompressedImage`
-//! - `sensor_msgs/msg/NavSatFix`
-//! - `sensor_msgs/msg/Range`
-//! - `sensor_msgs/msg/JointState`
-//! - `sensor_msgs/msg/Joy`
+//! This library uses runtime type introspection to support **any** ROS2 message
+//! type that has a `std_msgs/Header` field. The message type is specified as a
+//! string in the configuration (e.g., `"sensor_msgs/msg/Image"`), and the
+//! corresponding type support library is loaded at runtime.
+//!
+//! Common supported message types include:
+//! - `sensor_msgs/msg/{Image, PointCloud2, Imu, LaserScan, CameraInfo, ...}`
+//! - `nav_msgs/msg/{Odometry, Path, OccupancyGrid, ...}`
+//! - `geometry_msgs/msg/{PoseStamped, TwistStamped, ...}`
+//! - Any custom message type with a header field
 
 pub mod config;
 pub mod message;
-mod message_impl;
 pub mod node;
 pub mod subscriber;
-pub mod traits;
 
 pub use config::Config;
 pub use message::{SynchronizedGroup, TimestampedMessage};
 pub use node::MsyncNode;
-pub use traits::{HasHeader, Timestamped};
+pub use subscriber::DynamicSubscriptionHandle;

@@ -1,191 +1,176 @@
-//! Generic subscription creation for arbitrary message types.
+//! Dynamic subscription creation for arbitrary message types at runtime.
 //!
-//! This module provides a way to create subscriptions for different message
-//! types based on runtime configuration, while maintaining type safety.
+//! This module provides runtime message type support using rclrs's DynamicMessage
+//! and DynamicSubscription functionality. Messages are subscribed to based on
+//! their type name string (e.g., "sensor_msgs/msg/Image") without requiring
+//! compile-time type information.
 
 use crate::message::TimestampedMessage;
-use crate::traits::HasHeader;
-use eyre::{bail, Result, WrapErr};
-use rclrs::{Node, QoSProfile, Subscription, SubscriptionOptions};
+use eyre::{Result, WrapErr};
+use rclrs::{
+    DynamicMessage, DynamicSubscription, MessageInfo, MessageTypeName, Node, QoSProfile,
+    SimpleValue, SubscriptionOptions, Value,
+};
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
-/// A type-erased subscription handle.
+/// A type-erased subscription handle for dynamic message types.
 ///
-/// This allows storing subscriptions of different message types in a single
-/// collection while keeping the subscriptions alive.
-pub enum AnySubscription {
-    Image(Subscription<sensor_msgs::msg::Image>),
-    PointCloud2(Subscription<sensor_msgs::msg::PointCloud2>),
-    Imu(Subscription<sensor_msgs::msg::Imu>),
-    LaserScan(Subscription<sensor_msgs::msg::LaserScan>),
-    CameraInfo(Subscription<sensor_msgs::msg::CameraInfo>),
-    CompressedImage(Subscription<sensor_msgs::msg::CompressedImage>),
-    NavSatFix(Subscription<sensor_msgs::msg::NavSatFix>),
-    Range(Subscription<sensor_msgs::msg::Range>),
-    JointState(Subscription<sensor_msgs::msg::JointState>),
-    Joy(Subscription<sensor_msgs::msg::Joy>),
+/// This wraps the rclrs DynamicSubscription and keeps it alive while
+/// the node is running.
+pub struct DynamicSubscriptionHandle {
+    /// The underlying dynamic subscription (kept alive by Arc).
+    _subscription: DynamicSubscription,
+    /// The message type for logging/debugging.
+    pub msg_type: String,
+    /// The topic name.
+    pub topic: String,
 }
 
-/// Create a subscription for a typed message and send to the sync channel.
-fn create_typed_subscription<M>(
-    node: &Node,
-    topic: &str,
-    qos: QoSProfile,
-    tx: mpsc::UnboundedSender<(String, TimestampedMessage)>,
-    type_name: &str,
-) -> Result<Subscription<M>>
-where
-    M: rclrs::MessageIDL + HasHeader,
-{
-    let topic_owned = topic.to_string();
-    let type_name_owned = type_name.to_string();
-
-    let mut options = SubscriptionOptions::new(topic);
-    options.qos = qos;
-
-    let subscription = node
-        .create_subscription::<M, _>(options, move |msg: M| {
-            let (sec, nanosec) = msg.header_stamp();
-            let timestamp = crate::message::ros_time_to_duration(sec, nanosec);
-
-            // For now, we store an empty data vec - in a full implementation
-            // we would serialize the message here
-            let timestamped = TimestampedMessage::new(
-                topic_owned.clone(),
-                timestamp,
-                Vec::new(), // TODO: Serialize message data
-                (sec, nanosec),
-            );
-
-            if let Err(e) = tx.send((topic_owned.clone(), timestamped)) {
-                error!(
-                    topic = %topic_owned,
-                    msg_type = %type_name_owned,
-                    error = %e,
-                    "Failed to send message to sync channel"
-                );
-            }
-        })
-        .wrap_err_with(|| format!("Failed to create subscription for topic: {}", topic))?;
-
-    info!(
-        topic = %topic,
-        msg_type = %type_name,
-        "Created typed subscription"
-    );
-
-    Ok(subscription)
-}
-
-/// Create subscriptions for all configured input topics.
+/// Extract the header timestamp from a DynamicMessage.
 ///
-/// This function creates the appropriate typed subscription based on the
-/// message type string in the configuration.
-pub fn create_subscriptions(
-    node: &Node,
-    inputs: &[crate::config::InputConfig],
-    qos: QoSProfile,
-    tx: mpsc::UnboundedSender<(String, TimestampedMessage)>,
-) -> Result<Vec<AnySubscription>> {
-    let mut subscriptions = Vec::with_capacity(inputs.len());
+/// This navigates the message structure to find:
+/// - `header.stamp.sec` (i32)
+/// - `header.stamp.nanosec` (u32)
+///
+/// Returns `None` if the message doesn't have a standard header.
+fn extract_header_stamp(msg: &DynamicMessage) -> Option<(i32, u32)> {
+    // Get the header field - should be Simple(Message(...))
+    let header = msg.get("header")?;
 
-    for input in inputs {
-        let subscription = create_subscription_for_type(
-            node,
-            &input.topic,
-            &input.msg_type,
-            qos.clone(),
-            tx.clone(),
-        )?;
-        subscriptions.push(subscription);
-    }
+    let Value::Simple(SimpleValue::Message(header_view)) = header else {
+        warn!("header field is not a simple message type");
+        return None;
+    };
 
-    Ok(subscriptions)
+    // Get the stamp field from header
+    let stamp = header_view.get("stamp")?;
+
+    let Value::Simple(SimpleValue::Message(stamp_view)) = stamp else {
+        warn!("stamp field is not a simple message type");
+        return None;
+    };
+
+    // Get sec and nanosec
+    let sec = stamp_view.get("sec")?;
+    let nanosec = stamp_view.get("nanosec")?;
+
+    let Value::Simple(SimpleValue::Int32(sec)) = sec else {
+        warn!("sec field is not Int32");
+        return None;
+    };
+
+    let Value::Simple(SimpleValue::Uint32(nanosec)) = nanosec else {
+        warn!("nanosec field is not Uint32");
+        return None;
+    };
+
+    Some((*sec, *nanosec))
 }
 
-/// Create a subscription based on the message type string.
-fn create_subscription_for_type(
+/// Create a dynamic subscription for any message type at runtime.
+fn create_dynamic_subscription(
     node: &Node,
     topic: &str,
     msg_type: &str,
     qos: QoSProfile,
     tx: mpsc::UnboundedSender<(String, TimestampedMessage)>,
-) -> Result<AnySubscription> {
-    // Normalize the message type (handle both "sensor_msgs/msg/Image" and "sensor_msgs/Image")
-    let normalized = normalize_msg_type(msg_type);
+) -> Result<DynamicSubscriptionHandle> {
+    // Parse the message type name
+    let message_type: MessageTypeName = msg_type
+        .try_into()
+        .wrap_err_with(|| format!("Invalid message type format: {}", msg_type))?;
 
-    match normalized.as_str() {
-        "sensor_msgs/msg/Image" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::Image>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::Image(sub))
-        }
-        "sensor_msgs/msg/PointCloud2" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::PointCloud2>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::PointCloud2(sub))
-        }
-        "sensor_msgs/msg/Imu" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::Imu>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::Imu(sub))
-        }
-        "sensor_msgs/msg/LaserScan" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::LaserScan>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::LaserScan(sub))
-        }
-        "sensor_msgs/msg/CameraInfo" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::CameraInfo>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::CameraInfo(sub))
-        }
-        "sensor_msgs/msg/CompressedImage" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::CompressedImage>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::CompressedImage(sub))
-        }
-        "sensor_msgs/msg/NavSatFix" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::NavSatFix>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::NavSatFix(sub))
-        }
-        "sensor_msgs/msg/Range" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::Range>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::Range(sub))
-        }
-        "sensor_msgs/msg/JointState" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::JointState>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::JointState(sub))
-        }
-        "sensor_msgs/msg/Joy" => {
-            let sub = create_typed_subscription::<sensor_msgs::msg::Joy>(
-                node, topic, qos, tx, msg_type,
-            )?;
-            Ok(AnySubscription::Joy(sub))
-        }
-        _ => {
-            bail!(
-                "Unsupported message type '{}' for topic '{}'. \
-                 Supported types: sensor_msgs/msg/{{Image, PointCloud2, Imu, LaserScan, \
-                 CameraInfo, CompressedImage, NavSatFix, Range, JointState, Joy}}",
-                msg_type,
-                topic
-            );
-        }
+    let topic_owned = topic.to_string();
+    let msg_type_owned = msg_type.to_string();
+
+    // Create subscription options
+    let mut options = SubscriptionOptions::new(topic);
+    options.qos = qos;
+
+    // Create the dynamic subscription
+    let subscription = node
+        .create_dynamic_subscription(
+            message_type,
+            options,
+            move |msg: DynamicMessage, _info: MessageInfo| {
+                // Extract timestamp from header
+                let (sec, nanosec) = match extract_header_stamp(&msg) {
+                    Some(stamp) => stamp,
+                    None => {
+                        warn!(
+                            topic = %topic_owned,
+                            msg_type = %msg_type_owned,
+                            "Message has no header.stamp, using zero timestamp"
+                        );
+                        (0, 0)
+                    }
+                };
+
+                let timestamp = crate::message::ros_time_to_duration(sec, nanosec);
+
+                // Create timestamped message
+                // Note: We store empty data for now - serialization can be added later
+                let timestamped = TimestampedMessage::new(
+                    topic_owned.clone(),
+                    timestamp,
+                    Vec::new(), // TODO: Serialize message data if needed
+                    (sec, nanosec),
+                );
+
+                if let Err(e) = tx.send((topic_owned.clone(), timestamped)) {
+                    error!(
+                        topic = %topic_owned,
+                        msg_type = %msg_type_owned,
+                        error = %e,
+                        "Failed to send message to sync channel"
+                    );
+                }
+            },
+        )
+        .wrap_err_with(|| {
+            format!(
+                "Failed to create dynamic subscription for topic '{}' with type '{}'",
+                topic, msg_type
+            )
+        })?;
+
+    info!(
+        topic = %topic,
+        msg_type = %msg_type,
+        "Created dynamic subscription"
+    );
+
+    Ok(DynamicSubscriptionHandle {
+        _subscription: subscription,
+        msg_type: msg_type.to_string(),
+        topic: topic.to_string(),
+    })
+}
+
+/// Create subscriptions for all configured input topics.
+///
+/// This function creates dynamic subscriptions based on the message type
+/// strings in the configuration. Any ROS2 message type can be used as long
+/// as the corresponding type support library is installed.
+pub fn create_subscriptions(
+    node: &Node,
+    inputs: &[crate::config::InputConfig],
+    qos: QoSProfile,
+    tx: mpsc::UnboundedSender<(String, TimestampedMessage)>,
+) -> Result<Vec<DynamicSubscriptionHandle>> {
+    let mut subscriptions = Vec::with_capacity(inputs.len());
+
+    for input in inputs {
+        // Normalize message type to full form
+        let msg_type = normalize_msg_type(&input.msg_type);
+
+        let subscription =
+            create_dynamic_subscription(node, &input.topic, &msg_type, qos, tx.clone())?;
+        subscriptions.push(subscription);
     }
+
+    Ok(subscriptions)
 }
 
 /// Normalize message type to the full form (package/msg/Type).
@@ -220,6 +205,10 @@ mod tests {
         assert_eq!(
             normalize_msg_type("nav_msgs/msg/Odometry"),
             "nav_msgs/msg/Odometry"
+        );
+        assert_eq!(
+            normalize_msg_type("custom_msgs/CustomType"),
+            "custom_msgs/msg/CustomType"
         );
     }
 }

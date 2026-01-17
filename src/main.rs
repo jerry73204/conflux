@@ -1,11 +1,11 @@
 //! msync node entry point.
 
-use eyre::{bail, Result, WrapErr};
+use eyre::{Result, WrapErr, bail};
 use msync::{Config, MsyncNode};
 use rclrs::{Context, CreateBasicExecutor, RclrsErrorFilter, SpinOptions};
+use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-use std::sync::Arc;
 
 fn main() -> Result<()> {
     // Initialize tracing

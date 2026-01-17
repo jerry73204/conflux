@@ -95,8 +95,14 @@ pub struct SynchronizedGroup {
 
 impl SynchronizedGroup {
     /// Create a new synchronized group.
-    pub fn new(timestamp: Duration, messages: indexmap::IndexMap<String, TimestampedMessage>) -> Self {
-        Self { timestamp, messages }
+    pub fn new(
+        timestamp: Duration,
+        messages: indexmap::IndexMap<String, TimestampedMessage>,
+    ) -> Self {
+        Self {
+            timestamp,
+            messages,
+        }
     }
 
     /// Get a message by topic name.
