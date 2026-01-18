@@ -210,8 +210,35 @@ lint-python:
         echo "No Python code to lint (conflux_py not yet created)"; \
     fi
 
-# Run all checks (format-check + lint)
-check: format-check lint-rust
+# Run all checks (format-check + lint), continues even if some fail
+check:
+    #!/usr/bin/env bash
+    set -o pipefail
+    failed=0
+    echo "=== Format Check: Rust ==="
+    just format-check-rust || failed=1
+    echo ""
+    echo "=== Format Check: C++ ==="
+    just format-check-cpp || failed=1
+    echo ""
+    echo "=== Format Check: Python ==="
+    just format-check-python || failed=1
+    echo ""
+    echo "=== Lint: Rust ==="
+    just lint-rust || failed=1
+    echo ""
+    echo "=== Lint: C++ ==="
+    just lint-cpp || failed=1
+    echo ""
+    echo "=== Lint: Python ==="
+    just lint-python || failed=1
+    echo ""
+    if [ $failed -ne 0 ]; then
+        echo "❌ Some checks failed"
+        exit 1
+    else
+        echo "✅ All checks passed"
+    fi
 
 # ==============================================================================
 # Running
