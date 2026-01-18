@@ -105,10 +105,16 @@ impl Config {
             }
         });
 
+        let drop_policy = match self.sync.drop_policy {
+            DropPolicySetting::RejectNew => conflux_core::DropPolicy::RejectNew,
+            DropPolicySetting::DropOldest => conflux_core::DropPolicy::DropOldest,
+        };
+
         conflux_core::Config {
-            window_size: self.sync.window_size,
+            window_size: Some(self.sync.window_size),
             start_time: None,
             buf_size: self.sync.buffer_size,
+            drop_policy,
             staleness_config,
         }
     }
@@ -147,6 +153,23 @@ pub struct SyncConfig {
 
     /// Maximum messages to buffer per input stream.
     pub buffer_size: usize,
+
+    /// Policy for handling buffer overflow.
+    #[serde(default)]
+    pub drop_policy: DropPolicySetting,
+}
+
+/// Drop policy configuration setting.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DropPolicySetting {
+    /// Reject new messages when buffer is full.
+    /// Preserves existing data. Suitable for offline/rosbag processing.
+    #[default]
+    RejectNew,
+    /// Drop the oldest message to make room for the new one.
+    /// Always accepts new data. Suitable for realtime processing.
+    DropOldest,
 }
 
 /// Staleness detection configuration.
@@ -242,10 +265,35 @@ qos:
         assert_eq!(config.output.suffix, "_sync");
         assert_eq!(config.sync.window_size, Duration::from_millis(50));
         assert_eq!(config.sync.buffer_size, 64);
+        assert_eq!(config.sync.drop_policy, DropPolicySetting::RejectNew);
         assert_eq!(
             config.staleness.as_ref().unwrap().preset,
             StalenessPreset::HighFrequency
         );
+    }
+
+    #[test]
+    fn test_drop_oldest_policy() {
+        let yaml = r#"
+inputs:
+  - topic: /camera/image
+    type: sensor_msgs/msg/Image
+
+output:
+  suffix: _sync
+
+sync:
+  window_size: 50ms
+  buffer_size: 2
+  drop_policy: drop_oldest
+"#;
+
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        config.validate().unwrap();
+
+        assert_eq!(config.sync.window_size, Duration::from_millis(50));
+        assert_eq!(config.sync.buffer_size, 2);
+        assert_eq!(config.sync.drop_policy, DropPolicySetting::DropOldest);
     }
 
     #[test]
