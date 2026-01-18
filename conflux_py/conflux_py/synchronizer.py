@@ -4,7 +4,8 @@ This module provides a convenient wrapper around the native Synchronizer
 that integrates directly with rclpy for easy use in ROS2 nodes.
 """
 
-from typing import Callable, List, Optional, Type, TypeVar
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Type, TypeVar
 
 from rclpy.node import Node
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
@@ -12,6 +13,48 @@ from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from ._core import DropPolicy, SyncConfig, SyncGroup, Synchronizer as _Synchronizer
 
 MsgT = TypeVar("MsgT")
+
+
+@dataclass
+class SyncStatistics:
+    """Statistics for synchronization operations."""
+
+    messages_received: Dict[str, int] = field(default_factory=dict)
+    """Count of messages received per topic."""
+
+    messages_rejected: Dict[str, int] = field(default_factory=dict)
+    """Count of messages rejected due to buffer overflow per topic."""
+
+    groups_synchronized: int = 0
+    """Count of synchronized groups produced."""
+
+    def total_received(self) -> int:
+        """Get total messages received across all topics."""
+        return sum(self.messages_received.values())
+
+    def total_rejected(self) -> int:
+        """Get total messages rejected across all topics."""
+        return sum(self.messages_rejected.values())
+
+    def rejection_rate(self, topic: Optional[str] = None) -> float:
+        """Get rejection rate (0.0 to 1.0) for a topic or overall.
+
+        Args:
+            topic: Topic name, or None for overall rate.
+
+        Returns:
+            Rejection rate as a fraction (0.0 = no rejections, 1.0 = all rejected).
+        """
+        if topic is not None:
+            received = self.messages_received.get(topic, 0)
+            rejected = self.messages_rejected.get(topic, 0)
+        else:
+            received = self.total_received()
+            rejected = self.total_rejected()
+
+        if received == 0:
+            return 0.0
+        return rejected / received
 
 
 class ROS2Synchronizer:
@@ -43,6 +86,8 @@ class ROS2Synchronizer:
         buffer_size: int = 64,
         drop_policy: DropPolicy = DropPolicy.REJECT_NEW,
         qos: Optional[QoSProfile] = None,
+        log_overflow: bool = True,
+        log_overflow_interval: float = 5.0,
     ):
         """Initialize the ROS2 synchronizer.
 
@@ -53,6 +98,8 @@ class ROS2Synchronizer:
             buffer_size: Maximum number of messages to buffer per topic.
             drop_policy: Policy for buffer overflow (DropPolicy.REJECT_NEW or DropPolicy.DROP_OLDEST).
             qos: QoS profile for subscriptions. Defaults to best-effort, keep-last(1).
+            log_overflow: Whether to log warnings when buffer overflow occurs.
+            log_overflow_interval: Minimum interval in seconds between overflow log messages per topic.
         """
         self._node = node
         self._config = SyncConfig(window_size_ms, buffer_size, drop_policy)
@@ -60,6 +107,12 @@ class ROS2Synchronizer:
         self._subscriptions = []
         self._callback: Optional[Callable[[SyncGroup], None]] = None
         self._sync: Optional[_Synchronizer] = None
+
+        # Statistics and logging
+        self._stats = SyncStatistics()
+        self._log_overflow = log_overflow
+        self._log_overflow_interval = log_overflow_interval
+        self._last_overflow_log_time: Dict[str, float] = {}
 
         if qos is None:
             self._qos = QoSProfile(
@@ -81,13 +134,26 @@ class ROS2Synchronizer:
             The message type must have a `header.stamp` field for timestamp extraction.
         """
         self._topics.append(topic)
+        # Initialize statistics for this topic
+        self._stats.messages_received[topic] = 0
+        self._stats.messages_rejected[topic] = 0
 
         def msg_callback(msg, topic=topic):
             if self._sync is not None:
                 # Extract timestamp from header
                 stamp = msg.header.stamp
                 timestamp_ns = stamp.sec * 1_000_000_000 + stamp.nanosec
-                self._sync.push(topic, timestamp_ns, msg)
+
+                # Track statistics
+                self._stats.messages_received[topic] += 1
+
+                # Push to synchronizer and check if accepted
+                accepted = self._sync.push(topic, timestamp_ns, msg)
+
+                if not accepted:
+                    self._stats.messages_rejected[topic] += 1
+                    self._log_buffer_overflow(topic)
+
                 self._poll()
 
         sub = self._node.create_subscription(msg_type, topic, msg_callback, self._qos)
@@ -121,7 +187,30 @@ class ROS2Synchronizer:
             return
 
         for group in self._sync:
+            self._stats.groups_synchronized += 1
             self._callback(group)
+
+    def _log_buffer_overflow(self, topic: str) -> None:
+        """Log a buffer overflow warning with rate limiting."""
+        if not self._log_overflow:
+            return
+
+        import time
+
+        now = time.time()
+        last_log = self._last_overflow_log_time.get(topic, 0.0)
+
+        if now - last_log >= self._log_overflow_interval:
+            self._last_overflow_log_time[topic] = now
+            rejected = self._stats.messages_rejected[topic]
+            received = self._stats.messages_received[topic]
+            rate = rejected / received if received > 0 else 0.0
+
+            policy_name = self._config.drop_policy.name
+            self._node.get_logger().warn(
+                f"Buffer overflow on '{topic}': {rejected}/{received} messages rejected "
+                f"({rate:.1%}), policy={policy_name}, buffer_size={self._config.buffer_size}"
+            )
 
     @property
     def topic_count(self) -> int:
@@ -132,6 +221,15 @@ class ROS2Synchronizer:
     def topics(self) -> List[str]:
         """Get the list of registered topics."""
         return self._topics.copy()
+
+    @property
+    def statistics(self) -> SyncStatistics:
+        """Get synchronization statistics.
+
+        Returns:
+            SyncStatistics with message counts and rejection rates.
+        """
+        return self._stats
 
     def is_ready(self) -> bool:
         """Check if all buffers have at least 2 messages."""

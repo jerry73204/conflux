@@ -26,11 +26,11 @@ from ._core import DropPolicy, SyncConfig, SyncGroup, Synchronizer
 
 __all__ = ["DropPolicy", "SyncConfig", "SyncGroup", "Synchronizer"]
 
-# Conditionally import ROS2Synchronizer if rclpy is available
+# Conditionally import ROS2Synchronizer and SyncStatistics if rclpy is available
 try:
-    from .synchronizer import ROS2Synchronizer  # noqa: F401
+    from .synchronizer import ROS2Synchronizer, SyncStatistics  # noqa: F401
 
-    __all__.append("ROS2Synchronizer")
+    __all__.extend(["ROS2Synchronizer", "SyncStatistics"])
 except ImportError:
     pass
 
