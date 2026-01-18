@@ -24,7 +24,7 @@ conflux is a multi-stream message synchronization library for ROS2. It groups me
 | conflux-ros2 | Rust | `crates/conflux-ros2/` | ROS2 utilities for Rust nodes |
 | conflux | Rust | `conflux_node/` | Standalone ROS2 synchronization node |
 | conflux_cpp | C++ | `conflux_cpp/` | C++ library wrapping core via FFI |
-| conflux_py | Python | `conflux_py/` | Python library wrapping core via PyO3 |
+| conflux_py | Python | `conflux_py/` | Python library wrapping core via ctypes FFI |
 
 ## Build System
 
@@ -35,7 +35,7 @@ This project uses `colcon` to build ROS2 packages. The justfile provides all bui
 ```bash
 just build          # Build all ROS2 packages (conflux, conflux_cpp, conflux_py)
 just build-core     # Build only conflux-core (pure Rust, no ROS2)
-just build-py       # Build Python wheel with maturin
+just cargo-build-ffi  # Build FFI library (required by conflux_py)
 ```
 
 ## Common Development Commands
@@ -53,14 +53,13 @@ just build-pkg <name>   # Build specific package (e.g., just build-pkg conflux_c
 just build-verbose      # Build with verbose output
 just build-debug        # Build in debug mode (faster compilation)
 just build-core         # Build conflux-core only (pure Rust)
-just build-py           # Build Python wheel with maturin
+just cargo-build-ffi    # Build FFI library for Python/C++ bindings
 
 # ==== Testing ====
 just test               # Run all tests (Rust, C++, Python)
-just test-rust          # Run Rust tests (workspace + FFI + PyO3)
+just test-rust          # Run Rust tests (workspace + FFI)
 just test-core          # Run conflux-core tests only
 just test-ffi           # Run conflux-ffi tests only
-just test-py-rust       # Run conflux-py Rust tests only
 just test-python        # Run Python tests with colcon
 
 # ==== Formatting ====
@@ -128,14 +127,13 @@ conflux/
 │
 ├── conflux_py/                   # Python ROS2 library
 │   ├── package.xml
-│   ├── pyproject.toml            # maturin build config
 │   ├── conflux_py/
 │   │   ├── __init__.py           # Exports Synchronizer, SyncConfig, SyncGroup
-│   │   ├── synchronizer.py       # ROS2Synchronizer wrapper
-│   │   └── _conflux_py.pyi       # Type stubs
+│   │   ├── _core.py              # Synchronizer wrapping FFI bindings
+│   │   ├── _ffi.py               # ctypes FFI bindings to libconflux_ffi.so
+│   │   └── synchronizer.py       # ROS2Synchronizer wrapper
 │   ├── examples/sync_node.py     # Example ROS2 node
-│   ├── test/                     # pytest tests
-│   └── rust/                     # PyO3 crate (built by maturin)
+│   └── test/                     # pytest tests
 │
 ├── test/                         # Launch file test scripts
 └── docs/roadmap/                 # Development documentation
@@ -244,9 +242,26 @@ See `conflux_node/config/example.yaml` for full documentation.
 - **Workspace crates** (`conflux-core`): Can be built with `cargo build -p conflux-core`
 - **ROS2 crates** (`conflux-ros2`, `conflux_node`): Must be built with `just build` (colcon)
 - **FFI crate** (`conflux_cpp/rust`): Built automatically by CMake during `just build`
-- **PyO3 crate** (`conflux_py/rust`): Built with `just build-py` (maturin) or during colcon build
+- **conflux_py**: Uses ctypes FFI to load `libconflux_ffi.so` at runtime (no Rust build required for Python package)
 
 ROS2 message crates use wildcard versions (`*`) that are patched by `build/ros2_cargo_config.toml` at build time.
+
+## Performance
+
+The synchronization algorithm uses an inf/sup timestamp-based windowing approach implemented in Rust (`conflux-core`). All language bindings (C++, Python) use the same core algorithm via FFI.
+
+### Profiling Results (LCTK Calibration Demo)
+
+| Mode | QoS Policy | Sync Rate | Test Duration |
+|------|------------|-----------|---------------|
+| Offline | RELIABLE | ~5.2 Hz | 60s |
+| Realtime | BEST_EFFORT | ~2.3 Hz | 60s |
+
+**Notes:**
+- Offline mode uses RELIABLE QoS for rosbag playback (no message drops)
+- Realtime mode uses BEST_EFFORT QoS (may drop messages under load)
+- Lower realtime rate is expected due to QoS message drops and processing delays
+- Tested with LiDAR board detection (~10 Hz) and ArUco detection (~30 Hz)
 
 ## Testing
 
@@ -254,11 +269,11 @@ ROS2 message crates use wildcard versions (`*`) that are patched by `build/ros2_
 # Core library tests (no ROS2 required)
 just test-core          # 166 tests
 
-# All Rust tests (core + FFI + PyO3)
+# All Rust tests (core + FFI)
 just test-rust
 
-# Python tests (requires built wheel)
-cd /tmp && python -m pytest /path/to/conflux_py/test/
+# Python tests (requires FFI library built)
+just test-python
 
 # Launch file tests
 bash test/test_all_launches.sh
