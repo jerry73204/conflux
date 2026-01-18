@@ -250,18 +250,94 @@ ROS2 message crates use wildcard versions (`*`) that are patched by `build/ros2_
 
 The synchronization algorithm uses an inf/sup timestamp-based windowing approach implemented in Rust (`conflux-core`). All language bindings (C++, Python) use the same core algorithm via FFI.
 
+### Processing Modes
+
+| Mode | QoS | Window | Buffer | Drop Policy | Use Case |
+|------|-----|--------|--------|-------------|----------|
+| Offline | RELIABLE | Infinite (0) | 100 | RejectNew | Rosbag playback |
+| Realtime | BEST_EFFORT | 50ms | 2 | DropOldest | Live sensors |
+
+**Mode characteristics:**
+- **Offline mode**: Preserves all data, uses infinite window and large buffer. `RejectNew` policy ensures no data loss (rejected messages indicate buffer overflow that should be investigated).
+- **Realtime mode**: Minimizes latency, uses small window and buffer. `DropOldest` policy always accepts new data, discarding stale messages.
+
+### Drop Policy
+
+The `drop_policy` parameter controls buffer overflow behavior:
+
+| Policy | Behavior | Best For |
+|--------|----------|----------|
+| `reject_new` | Reject incoming messages when buffer full | Offline processing, data preservation |
+| `drop_oldest` | Evict oldest message to make room | Realtime processing, low latency |
+
+### Synchronization Statistics
+
+The `ROS2Synchronizer` tracks statistics accessible via `sync.statistics`:
+
+```python
+stats = sync.statistics
+print(f"Total received: {stats.total_received()}")
+print(f"Total rejected: {stats.total_rejected()}")  # Buffer overflow count
+print(f"Groups synchronized: {stats.groups_synchronized}")
+print(f"Overall rejection rate: {stats.rejection_rate():.1%}")
+
+# Per-topic breakdown
+for topic in stats.messages_received:
+    print(f"  {topic}: {stats.messages_rejected[topic]} rejected")
+```
+
+Statistics are automatically logged on node shutdown.
+
+### Buffer Overflow Logging
+
+Buffer overflow warnings are automatically logged (rate-limited to avoid spam):
+
+```
+[WARN] Buffer overflow on '/camera/image': 15/100 messages rejected (15.0%), policy=REJECT_NEW, buffer_size=64
+```
+
+Configure logging behavior:
+```python
+sync = ROS2Synchronizer(
+    self,
+    log_overflow=True,           # Enable overflow logging (default: True)
+    log_overflow_interval=5.0,   # Min seconds between log messages per topic
+)
+```
+
 ### Profiling Results (LCTK Calibration Demo)
 
-| Mode | QoS Policy | Sync Rate | Test Duration |
-|------|------------|-----------|---------------|
-| Offline | RELIABLE | ~5.2 Hz | 60s |
-| Realtime | BEST_EFFORT | ~2.3 Hz | 60s |
+| Mode | QoS Policy | Sync Rate | Rejection Rate | Test Duration |
+|------|------------|-----------|----------------|---------------|
+| Offline | RELIABLE | ~5.2 Hz | 0% | 60s |
+| Realtime | BEST_EFFORT | ~2.3 Hz | ~10-15%* | 60s |
+
+*Realtime rejection rate varies based on processing load and sensor rates.
 
 **Notes:**
 - Offline mode uses RELIABLE QoS for rosbag playback (no message drops)
 - Realtime mode uses BEST_EFFORT QoS (may drop messages under load)
 - Lower realtime rate is expected due to QoS message drops and processing delays
 - Tested with LiDAR board detection (~10 Hz) and ArUco detection (~30 Hz)
+
+### Profiling Methodology
+
+To profile synchronization performance:
+
+```bash
+# Run calibration demo in offline mode
+just demo mode=offline
+
+# Run calibration demo in realtime mode
+just demo mode=realtime
+```
+
+Statistics are logged on Ctrl+C shutdown:
+```
+[INFO] Final sync statistics: received=1200, rejected=0, groups=580, rejection_rate=0.0%
+[INFO]   aruco_detections: received=800, rejected=0, rejection_rate=0.0%
+[INFO]   calibration_board_detections: received=400, rejected=0, rejection_rate=0.0%
+```
 
 ## Testing
 
