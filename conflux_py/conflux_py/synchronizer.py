@@ -9,8 +9,7 @@ from typing import Callable, List, Optional, Type, TypeVar
 from rclpy.node import Node
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
-from ._conflux_py import SyncConfig, SyncGroup
-from ._conflux_py import Synchronizer as _Synchronizer
+from ._core import SyncConfig, SyncGroup, Synchronizer as _Synchronizer
 
 MsgT = TypeVar("MsgT")
 

@@ -65,13 +65,8 @@ cargo-build-core:
 cargo-build-ffi:
     cd conflux_cpp/rust && cargo build --release
 
-# Build conflux-py crate (for Python bindings)
-cargo-build-py:
-    cd conflux_py/rust && cargo build --release
-
-# Build conflux_py wheel with maturin
-build-py:
-    cd conflux_py && maturin build --release
+# Build conflux-ffi and copy library (Python uses FFI via ctypes)
+cargo-build-py: cargo-build-ffi
 
 # ==============================================================================
 # Testing
@@ -84,13 +79,11 @@ test: test-rust test-cpp test-python
 test-rust:
     cargo test --workspace
     cd conflux_cpp/rust && cargo test
-    cd conflux_py/rust && cargo test
 
 # Run Rust tests with nextest
 test-rust-nextest:
     cargo nextest run --workspace --no-fail-fast
     cd conflux_cpp/rust && cargo nextest run --no-fail-fast
-    cd conflux_py/rust && cargo nextest run --no-fail-fast
 
 # Run C++ tests (currently no unit tests, only lint checks available)
 test-cpp:
@@ -117,10 +110,6 @@ test-core-nextest:
 # Run conflux-ffi tests only
 test-ffi:
     cd conflux_cpp/rust && cargo test
-
-# Run conflux-py Rust tests only
-test-py-rust:
-    cd conflux_py/rust && cargo test
 
 # ==============================================================================
 # Test - Colcon (ROS2 packages)
@@ -149,7 +138,6 @@ format: format-rust format-cpp format-python
 format-rust:
     cargo +nightly fmt --all
     cd conflux_cpp/rust && cargo +nightly fmt
-    cd conflux_py/rust && cargo +nightly fmt
 
 # Format C++ code
 format-cpp:
@@ -176,7 +164,6 @@ format-check: format-check-rust format-check-cpp format-check-python
 format-check-rust:
     cargo +nightly fmt --all --check
     cd conflux_cpp/rust && cargo +nightly fmt --check
-    cd conflux_py/rust && cargo +nightly fmt --check
 
 # Check C++ formatting
 format-check-cpp:
@@ -203,7 +190,6 @@ lint: lint-rust lint-cpp lint-python
 lint-rust:
     cargo clippy --workspace --all-targets -- -D warnings
     cd conflux_cpp/rust && cargo clippy --all-targets -- -D warnings
-    cd conflux_py/rust && cargo clippy --all-targets -- -D warnings
 
 # Lint C++ code (requires clang-tidy and prior build)
 lint-cpp:

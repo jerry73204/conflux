@@ -18,7 +18,6 @@ setup(
     maintainer_email="aeon@example.com",
     description="Python library for multi-stream message synchronization",
     license="MIT OR Apache-2.0",
-    tests_require=["pytest"],
     entry_points={
         "console_scripts": [],
     },

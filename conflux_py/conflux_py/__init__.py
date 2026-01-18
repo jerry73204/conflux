@@ -22,8 +22,16 @@ Example:
     ...     process(image, points)
 """
 
-from ._conflux_py import SyncConfig, SyncGroup, Synchronizer
-from .synchronizer import ROS2Synchronizer
+from ._core import SyncConfig, SyncGroup, Synchronizer
 
-__all__ = ["SyncConfig", "SyncGroup", "Synchronizer", "ROS2Synchronizer"]
+__all__ = ["SyncConfig", "SyncGroup", "Synchronizer"]
+
+# Conditionally import ROS2Synchronizer if rclpy is available
+try:
+    from .synchronizer import ROS2Synchronizer  # noqa: F401
+
+    __all__.append("ROS2Synchronizer")
+except ImportError:
+    pass
+
 __version__ = "0.2.0"
