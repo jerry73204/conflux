@@ -136,7 +136,12 @@ where
     }
 
     /// Gets the minimum of the maximum timestamps from each buffer.
+    /// Returns None if any buffer is empty.
     pub fn sup_timestamp(&self) -> Option<(K, Duration)> {
+        // First check all buffers have messages
+        if self.buffers.values().any(|b| b.is_empty()) {
+            return None;
+        }
         self.buffers
             .iter()
             .filter_map(|(key, buffer)| {
@@ -148,7 +153,12 @@ where
     }
 
     /// Gets the maximum of the minimum timestamps from each buffer.
+    /// Returns None if any buffer is empty.
     pub fn inf_timestamp(&self) -> Option<(K, Duration)> {
+        // First check all buffers have messages
+        if self.buffers.values().any(|b| b.is_empty()) {
+            return None;
+        }
         self.buffers
             .iter()
             .filter_map(|(key, buffer)| {

@@ -132,29 +132,20 @@ class Synchronizer:
         self._topics = list(topics)
         self._config = config or SyncConfig()
 
-        # Try to use FFI backend, fall back to pure Python
-        try:
-            from ._ffi import FFISynchronizer, is_available
+        # Use FFI backend (required)
+        from ._ffi import FFISynchronizer, is_available
 
-            if is_available():
-                self._ffi_sync = FFISynchronizer(
-                    topics,
-                    window_size_ms=self._config.window_size_ms,
-                    buffer_size=self._config.buffer_size,
-                )
-                self._use_ffi = True
-            else:
-                self._use_ffi = False
-                self._pure_python_init()
-        except ImportError:
-            self._use_ffi = False
-            self._pure_python_init()
+        if not is_available():
+            raise RuntimeError(
+                "FFI library (libconflux_ffi.so) is not available. "
+                "Please build the conflux_ffi crate first."
+            )
 
-    def _pure_python_init(self):
-        """Initialize pure Python fallback synchronizer."""
-        # Simple buffer-based implementation
-        self._buffers: Dict[str, List[tuple]] = {topic: [] for topic in self._topics}
-        self._max_buffer = self._config.buffer_size
+        self._ffi_sync = FFISynchronizer(
+            topics,
+            window_size_ms=self._config.window_size_ms,
+            buffer_size=self._config.buffer_size,
+        )
 
     def push(self, topic: str, timestamp_ns: int, message: Any) -> bool:
         """Push a message to the synchronizer.
@@ -177,16 +168,7 @@ class Synchronizer:
         if timestamp_ns < 0:
             raise ValueError("timestamp_ns must be non-negative")
 
-        if self._use_ffi:
-            return self._ffi_sync.push(topic, timestamp_ns, message)
-        else:
-            # Pure Python fallback
-            buffer = self._buffers[topic]
-            if len(buffer) >= self._max_buffer:
-                return False
-            buffer.append((timestamp_ns, message))
-            buffer.sort(key=lambda x: x[0])  # Keep sorted by timestamp
-            return True
+        return self._ffi_sync.push(topic, timestamp_ns, message)
 
     def poll(self) -> Optional[SyncGroup]:
         """Poll for a synchronized group of messages.
@@ -194,51 +176,12 @@ class Synchronizer:
         Returns:
             A SyncGroup if a synchronized group is available, None otherwise.
         """
-        if self._use_ffi:
-            result = self._ffi_sync.poll()
-            if result:
-                # Convert FFI result to SyncGroup
-                messages = {topic: msg for topic, (ts, msg) in result.items()}
-                min_ts = min(ts for ts, msg in result.values())
-                return SyncGroup(messages, min_ts)
-            return None
-        else:
-            # Pure Python fallback - simple approximate sync
-            return self._pure_python_poll()
-
-    def _pure_python_poll(self) -> Optional[SyncGroup]:
-        """Pure Python polling implementation."""
-        # Check if all buffers have at least one message
-        if any(len(buf) == 0 for buf in self._buffers.values()):
-            return None
-
-        # Get the oldest timestamp from each buffer
-        oldest = {topic: buf[0] for topic, buf in self._buffers.items()}
-
-        # Find the reference timestamp (median of oldest timestamps)
-        timestamps = [ts for ts, msg in oldest.values()]
-        timestamps.sort()
-        ref_ts = timestamps[len(timestamps) // 2]
-
-        # Check if all messages are within the window
-        window_ns = self._config.window_size_ms * 1_000_000
-        all_within_window = all(
-            abs(ts - ref_ts) <= window_ns for ts, msg in oldest.values()
-        )
-
-        if all_within_window:
-            # Create sync group and remove messages from buffers
-            messages = {}
-            min_ts = float("inf")
-            for topic, buf in self._buffers.items():
-                ts, msg = buf.pop(0)
-                messages[topic] = msg
-                min_ts = min(min_ts, ts)
-            return SyncGroup(messages, int(min_ts))
-
-        # Messages are not synchronized, drop the oldest one
-        oldest_topic = min(oldest.keys(), key=lambda t: oldest[t][0])
-        self._buffers[oldest_topic].pop(0)
+        result = self._ffi_sync.poll()
+        if result:
+            # Convert FFI result to SyncGroup
+            messages = {topic: msg for topic, (ts, msg) in result.items()}
+            min_ts = min(ts for ts, msg in result.values())
+            return SyncGroup(messages, min_ts)
         return None
 
     def drain(self) -> List[SyncGroup]:
@@ -267,21 +210,15 @@ class Synchronizer:
 
     def is_ready(self) -> bool:
         """Check if all buffers have at least 2 messages."""
-        if self._use_ffi:
-            return self._ffi_sync.is_ready()
-        return all(len(buf) >= 2 for buf in self._buffers.values())
+        return self._ffi_sync.is_ready()
 
     def is_empty(self) -> bool:
         """Check if any buffer is empty."""
-        if self._use_ffi:
-            return self._ffi_sync.is_empty()
-        return any(len(buf) == 0 for buf in self._buffers.values())
+        return self._ffi_sync.is_empty()
 
     def buffer_len(self, topic: str) -> int:
         """Get the buffer length for a specific topic."""
-        if self._use_ffi:
-            return self._ffi_sync.buffer_len(topic)
-        return len(self._buffers.get(topic, []))
+        return self._ffi_sync.buffer_len(topic)
 
     def __iter__(self) -> Iterator[SyncGroup]:
         """Iterate over synchronized groups."""
@@ -295,10 +232,8 @@ class Synchronizer:
         return group
 
     def __repr__(self) -> str:
-        backend = "FFI" if self._use_ffi else "Python"
         return (
             f"Synchronizer(topics={self._topics}, "
             f"window_size_ms={self._config.window_size_ms}, "
-            f"buffer_size={self._config.buffer_size}, "
-            f"backend={backend})"
+            f"buffer_size={self._config.buffer_size})"
         )
