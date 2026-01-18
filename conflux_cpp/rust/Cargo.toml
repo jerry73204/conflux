@@ -12,6 +12,7 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 conflux-core = { path = "../../crates/conflux-core" }
 indexmap = "2"
+tokio = { version = "1", features = ["sync"] }
 
 [build-dependencies]
 cbindgen = "0.29"

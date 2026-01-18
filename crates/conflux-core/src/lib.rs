@@ -45,12 +45,7 @@
 //! .map(|msg| eyre::Ok(msg));
 //!
 //! // Run the synchronization algorithm
-//! let config = Config {
-//!     window_size: Duration::from_millis(500),
-//!     start_time: None,
-//!     buf_size: 16,
-//!     staleness_config: None,
-//! };
+//! let config = Config::basic(Some(Duration::from_millis(500)), None, 16);
 //! let (sync_stream, feedback_stream) = sync(join_stream, ["X", "Y"], config)?;
 //!
 //! // Collect the groups
@@ -67,7 +62,8 @@ mod sync;
 mod types;
 mod utils;
 
-pub use config::Config;
+pub use config::{Config, DropPolicy};
 pub use staleness::{StalenessConfig, StalenessDetector, StalenessStats};
+pub use state::PushError;
 pub use sync::sync;
 pub use types::*;

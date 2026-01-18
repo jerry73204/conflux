@@ -1,4 +1,4 @@
-use conflux_core::{Config, StalenessConfig, WithTimestamp, sync};
+use conflux_core::{Config, DropPolicy, StalenessConfig, WithTimestamp, sync};
 use futures::{TryStreamExt, stream};
 use indexmap::IndexMap;
 use std::time::Duration;
@@ -60,7 +60,13 @@ async fn test_staleness_with_lazy_checking() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(100), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(100)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let stream = stream::iter(messages.into_iter().map(Ok));
     let (output_stream, _feedback_receiver) = sync(stream, vec!["A", "B"], config).unwrap();
@@ -81,21 +87,22 @@ async fn test_config_with_staleness() {
     // Test Config construction with staleness
     let staleness_config = StalenessConfig::default();
     let config = Config::with_staleness(
-        Duration::from_millis(100),
+        Some(Duration::from_millis(100)),
         Some(Duration::from_millis(1000)),
         32,
+        DropPolicy::RejectNew,
         staleness_config.clone(),
     );
 
-    assert_eq!(config.window_size, Duration::from_millis(100));
+    assert_eq!(config.window_size, Some(Duration::from_millis(100)));
     assert_eq!(config.start_time, Some(Duration::from_millis(1000)));
     assert_eq!(config.buf_size, 32);
     assert!(config.staleness_config.is_some());
 
     // Test basic config without staleness
-    let basic_config = Config::basic(Duration::from_millis(200), None, 16);
+    let basic_config = Config::basic(Some(Duration::from_millis(200)), None, 16);
 
-    assert_eq!(basic_config.window_size, Duration::from_millis(200));
+    assert_eq!(basic_config.window_size, Some(Duration::from_millis(200)));
     assert!(basic_config.staleness_config.is_none());
 
     // Test enabling staleness on existing config

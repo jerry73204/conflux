@@ -135,31 +135,16 @@ pub fn assert_timestamp_ordering(groups: &[IndexMap<&str, TestMessage>]) {
 /// Create a standard config for testing
 #[allow(dead_code)]
 pub fn default_config() -> Config {
-    Config {
-        window_size: Duration::from_millis(100),
-        start_time: None,
-        buf_size: 16,
-        staleness_config: None,
-    }
+    Config::basic(Some(Duration::from_millis(100)), None, 16)
 }
 
 /// Create a config with custom window size
 pub fn config_with_window(window_ms: u64) -> Config {
-    Config {
-        window_size: Duration::from_millis(window_ms),
-        start_time: None,
-        buf_size: 16,
-        staleness_config: None,
-    }
+    Config::basic(Some(Duration::from_millis(window_ms)), None, 16)
 }
 
 /// Create a config with custom buffer size
 #[allow(dead_code)]
 pub fn config_with_buffer_size(buf_size: usize) -> Config {
-    Config {
-        window_size: Duration::from_millis(100),
-        start_time: None,
-        buf_size,
-        staleness_config: None,
-    }
+    Config::basic(Some(Duration::from_millis(100)), None, buf_size)
 }

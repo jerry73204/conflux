@@ -3,13 +3,15 @@
 //! This module provides a C-compatible interface to the conflux-core
 //! synchronization algorithm for use in C++ ROS2 nodes.
 
-use conflux_core::{WithTimestamp, buffer::Buffer, state::State};
+use conflux_core::{DropPolicy as CoreDropPolicy, WithTimestamp, buffer::Buffer, state::State};
 use indexmap::IndexMap;
 use std::{
     ffi::{CStr, c_char, c_void},
     ptr,
+    sync::Arc,
     time::Duration,
 };
+use tokio::sync::Notify;
 
 /// Opaque handle to a synchronizer instance.
 ///
@@ -36,13 +38,39 @@ impl WithTimestamp for FfiMessage {
     }
 }
 
+/// Policy for handling buffer overflow when pushing new messages.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConfluxDropPolicy {
+    /// Reject new messages when buffer is full.
+    /// Preserves existing data. Suitable for offline/rosbag processing.
+    #[default]
+    RejectNew = 0,
+
+    /// Drop the oldest message to make room for the new one.
+    /// Always accepts new data. Suitable for realtime processing.
+    DropOldest = 1,
+}
+
+impl From<ConfluxDropPolicy> for CoreDropPolicy {
+    fn from(policy: ConfluxDropPolicy) -> Self {
+        match policy {
+            ConfluxDropPolicy::RejectNew => CoreDropPolicy::RejectNew,
+            ConfluxDropPolicy::DropOldest => CoreDropPolicy::DropOldest,
+        }
+    }
+}
+
 /// Configuration for creating a synchronizer.
 #[repr(C)]
 pub struct ConfluxConfig {
     /// Time window in milliseconds for grouping messages.
+    /// Use 0 for infinite window (no time-based dropping).
     pub window_size_ms: u64,
     /// Maximum number of messages to buffer per stream.
     pub buffer_size: usize,
+    /// Policy for handling buffer overflow.
+    pub drop_policy: ConfluxDropPolicy,
 }
 
 impl Default for ConfluxConfig {
@@ -50,6 +78,7 @@ impl Default for ConfluxConfig {
         Self {
             window_size_ms: 50,
             buffer_size: 64,
+            drop_policy: ConfluxDropPolicy::default(),
         }
     }
 }
@@ -119,14 +148,23 @@ pub unsafe extern "C" fn conflux_synchronizer_new(
             .map(|key| (key.clone(), Buffer::with_capacity(config.buffer_size)))
             .collect();
 
+        // Convert window size: 0 means infinite window (None)
+        let window_size = if config.window_size_ms == 0 {
+            None
+        } else {
+            Some(Duration::from_millis(config.window_size_ms))
+        };
+
         // Create State directly
         let state = State {
             buffers,
             commit_ts: None,
             buf_size: config.buffer_size,
-            window_size: Duration::from_millis(config.window_size_ms),
+            window_size,
+            drop_policy: config.drop_policy.into(),
             feedback_tx: None,
             staleness_detector: None,
+            space_notify: Arc::new(Notify::new()),
         };
 
         let sync = Box::new(ConfluxSynchronizer {
@@ -355,6 +393,7 @@ mod tests {
         let config = ConfluxConfig {
             window_size_ms: 50,
             buffer_size: 10,
+            drop_policy: ConfluxDropPolicy::RejectNew,
         };
 
         let key1 = std::ffi::CString::new("topic1").unwrap();
@@ -389,6 +428,7 @@ mod tests {
         let config = ConfluxConfig {
             window_size_ms: 100,
             buffer_size: 10,
+            drop_policy: ConfluxDropPolicy::RejectNew,
         };
 
         let key1 = std::ffi::CString::new("topic1").unwrap();
@@ -433,6 +473,7 @@ mod tests {
         let config = ConfluxConfig {
             window_size_ms: 50,
             buffer_size: 10,
+            drop_policy: ConfluxDropPolicy::RejectNew,
         };
 
         let key1 = std::ffi::CString::new("topic1").unwrap();

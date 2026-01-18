@@ -18,8 +18,19 @@ Two policies for buffer overflow:
 
 | Policy | Behavior | Use Case |
 |--------|----------|----------|
-| **RejectNew** | Return error immediately | Offline/rosbag, caller handles overflow |
+| **RejectNew** | Reject new message when full | Offline/rosbag, preserve existing data |
 | **DropOldest** | Evict oldest, accept new | Realtime, always latest data |
+
+### Push Methods
+
+With `RejectNew` policy, provide both blocking and non-blocking push:
+
+| Method | Behavior | Use Case |
+|--------|----------|----------|
+| `push()` | Return error if full | Non-blocking, caller handles retry |
+| `push_blocking()` | Wait for space, then push | Blocking, applies backpressure (async only) |
+
+In sync FFI, `push_blocking()` falls back to `push()` behavior.
 
 ### Infinite Window
 

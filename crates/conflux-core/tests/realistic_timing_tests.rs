@@ -186,12 +186,7 @@ async fn test_burst_traffic_simulation() {
         )
         .build();
 
-    let config = Config {
-        window_size: Duration::from_millis(100),
-        start_time: None,
-        buf_size: 20, // Larger buffer to handle bursts
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(100)), None, 20); // Larger buffer to handle bursts
 
     let groups = run_sync(stream, ["sensor_a", "sensor_b"], config)
         .await

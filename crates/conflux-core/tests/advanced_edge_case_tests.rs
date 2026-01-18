@@ -205,12 +205,7 @@ async fn test_buffer_size_edge_cases() {
         )
         .build();
 
-    let config1 = Config {
-        window_size: Duration::from_millis(50),
-        start_time: None,
-        buf_size: 2,
-        staleness_config: None,
-    };
+    let config1 = Config::basic(Some(Duration::from_millis(50)), None, 2);
 
     let groups1 = run_sync(stream1, ["A", "B"], config1).await.unwrap();
 
@@ -226,12 +221,7 @@ async fn test_buffer_size_edge_cases() {
         )
         .build();
 
-    let config2 = Config {
-        window_size: Duration::from_millis(50),
-        start_time: None,
-        buf_size: 10_000,
-        staleness_config: None,
-    };
+    let config2 = Config::basic(Some(Duration::from_millis(50)), None, 10_000);
 
     let groups2 = run_sync(stream2, ["A", "B"], config2).await.unwrap();
 
@@ -259,12 +249,7 @@ async fn test_start_time_configurations() {
         )
         .build();
 
-    let config1 = Config {
-        window_size: Duration::from_millis(50),
-        start_time: None,
-        buf_size: 16,
-        staleness_config: None,
-    };
+    let config1 = Config::basic(Some(Duration::from_millis(50)), None, 16);
 
     let groups1 = run_sync(stream1, ["A", "B"], config1).await.unwrap();
 
@@ -277,12 +262,11 @@ async fn test_start_time_configurations() {
         )
         .build();
 
-    let config2 = Config {
-        window_size: Duration::from_millis(50),
-        start_time: Some(Duration::from_millis(1500)),
-        buf_size: 16,
-        staleness_config: None,
-    };
+    let config2 = Config::basic(
+        Some(Duration::from_millis(50)),
+        Some(Duration::from_millis(1500)),
+        16,
+    );
 
     let groups2 = run_sync(stream2, ["A", "B"], config2).await.unwrap();
 

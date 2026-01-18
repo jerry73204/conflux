@@ -203,12 +203,11 @@ async fn test_late_message_handling() {
         .add_message("B", 2100)
         .build();
 
-    let config = Config {
-        window_size: Duration::from_millis(100),
-        start_time: Some(Duration::from_millis(1500)), // Start after the "late" message
-        buf_size: 16,
-        staleness_config: None,
-    };
+    let config = Config::basic(
+        Some(Duration::from_millis(100)),
+        Some(Duration::from_millis(1500)), // Start after the "late" message
+        16,
+    );
 
     let groups = run_sync(stream, ["A", "B"], config).await.unwrap();
 
@@ -239,12 +238,11 @@ async fn test_rapid_state_changes() {
         .add_message("C", 1080)
         .build();
 
-    let config = Config {
-        window_size: Duration::from_millis(50),
-        start_time: None,
-        buf_size: 2, // Small buffer to force rapid state changes
-        staleness_config: None,
-    };
+    let config = Config::basic(
+        Some(Duration::from_millis(50)),
+        None,
+        2, // Small buffer to force rapid state changes
+    );
 
     let groups = run_sync(stream, ["A", "B", "C"], config).await.unwrap();
 

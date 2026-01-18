@@ -195,6 +195,7 @@ dependencies = [
  "cbindgen",
  "conflux-core",
  "indexmap 2.13.0",
+ "tokio",
 ]
 
 [[package]]

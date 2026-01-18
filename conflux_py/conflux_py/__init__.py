@@ -22,9 +22,9 @@ Example:
     ...     process(image, points)
 """
 
-from ._core import SyncConfig, SyncGroup, Synchronizer
+from ._core import DropPolicy, SyncConfig, SyncGroup, Synchronizer
 
-__all__ = ["SyncConfig", "SyncGroup", "Synchronizer"]
+__all__ = ["DropPolicy", "SyncConfig", "SyncGroup", "Synchronizer"]
 
 # Conditionally import ROS2Synchronizer if rclpy is available
 try:

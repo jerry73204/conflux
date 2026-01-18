@@ -38,12 +38,7 @@ async fn main() -> eyre::Result<()> {
     .map(eyre::Ok);
 
     // Run the synchronization algorithm
-    let config = Config {
-        window_size: Duration::from_millis(500),
-        start_time: None,
-        buf_size: 16,
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(500)), None, 16);
     let (sync_stream, _feedback_stream) = sync(join_stream, ["X", "Y"], config)?;
 
     // Collect the groups

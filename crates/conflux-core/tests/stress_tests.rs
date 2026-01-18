@@ -7,30 +7,30 @@ use std::time::{Duration, Instant};
 #[tokio::test]
 async fn test_high_volume_processing() {
     // Process 10k+ messages efficiently
-    let message_count = 10_000;
+    let message_count = 10_000usize;
     let stream_count = 3;
     let interval = 10; // 10ms intervals
 
-    let mut streams = Vec::new();
-    for stream_id in 0..stream_count {
-        let timestamps: Vec<u64> = (0..message_count)
-            .map(|i| i * interval + stream_id * 2) // Slight offset per stream
-            .collect();
-        streams.push((format!("stream_{}", stream_id), timestamps));
-    }
-
+    // Create interleaved messages to simulate realistic sensor data
+    // Messages from different streams arrive interleaved by timestamp
     let mut builder = StreamBuilder::new();
-    for (name, timestamps) in &streams {
-        builder = builder.add_messages(name.as_str(), timestamps);
+    let keys: Vec<String> = (0..stream_count).map(|i| format!("stream_{}", i)).collect();
+
+    for i in 0..message_count {
+        for (stream_id, key) in keys.iter().enumerate() {
+            let timestamp = (i * interval + stream_id * 2) as u64;
+            builder = builder.add_message(key.as_str(), timestamp);
+        }
     }
 
-    let keys: Vec<&str> = streams.iter().map(|(name, _)| name.as_str()).collect();
+    let key_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
     let stream = builder.build();
 
-    let config = config_with_window(50);
+    // Use reasonable buffer for high-volume processing
+    let config = Config::basic(Some(Duration::from_millis(50)), None, 64);
 
     let start_time = Instant::now();
-    let groups = run_sync(stream, keys, config).await.unwrap();
+    let groups = run_sync(stream, key_refs, config).await.unwrap();
     let elapsed = start_time.elapsed();
 
     // Performance requirements
@@ -43,7 +43,7 @@ async fn test_high_volume_processing() {
     // Should process most messages efficiently
     assert!(!groups.is_empty());
     assert!(
-        groups.len() > (message_count / 2) as usize,
+        groups.len() > message_count / 2,
         "Too few groups formed: {}",
         groups.len()
     );
@@ -129,12 +129,7 @@ async fn test_large_buffer_capacity() {
         .add_messages("B", &stream_b)
         .build();
 
-    let config = Config {
-        window_size: Duration::from_millis(100),
-        start_time: None,
-        buf_size: buffer_size,
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(100)), None, buffer_size);
 
     let start_time = Instant::now();
     let groups = run_sync(stream, ["A", "B"], config).await.unwrap();
@@ -235,12 +230,7 @@ async fn test_rapid_state_changes() {
         .add_messages("C", &timestamps_c)
         .build();
 
-    let config = Config {
-        window_size: Duration::from_millis(50),
-        start_time: None,
-        buf_size: 8, // Small buffer to force rapid state changes
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(50)), None, 8); // Small buffer to force rapid state changes
 
     let start_time = Instant::now();
     let groups = run_sync(stream, ["A", "B", "C"], config).await.unwrap();
@@ -284,12 +274,7 @@ async fn test_memory_efficiency() {
         }
         let stream = builder.build();
 
-        let config = Config {
-            window_size: Duration::from_millis(100),
-            start_time: None,
-            buf_size: 100, // Reasonable buffer size
-            staleness_config: None,
-        };
+        let config = Config::basic(Some(Duration::from_millis(100)), None, 100); // Reasonable buffer size
 
         let start_time = Instant::now();
         let groups = run_sync(stream, key_slice.to_vec(), config).await.unwrap();

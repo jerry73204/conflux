@@ -1,4 +1,4 @@
-use conflux_core::{Config, StalenessConfig, WithTimestamp, sync};
+use conflux_core::{Config, DropPolicy, StalenessConfig, WithTimestamp, sync};
 use futures::{TryStreamExt, stream};
 use indexmap::IndexMap;
 use std::time::Duration;
@@ -45,7 +45,13 @@ async fn test_staleness_integration_basic() {
     ];
 
     let staleness_config = StalenessConfig::default();
-    let config = Config::with_staleness(Duration::from_millis(100), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(100)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let groups = run_sync_with_staleness(messages, vec!["A", "B"], config)
         .await
@@ -74,7 +80,13 @@ async fn test_staleness_integration_with_lazy_checking() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(100), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(100)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let groups = run_sync_with_staleness(messages, vec!["A", "B"], config)
         .await
@@ -101,7 +113,13 @@ async fn test_staleness_integration_high_frequency() {
         enable_immediate_expiration: false, // Disable for testing without tokio feature
         ..StalenessConfig::high_frequency()
     };
-    let config = Config::with_staleness(Duration::from_millis(20), None, 32, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(20)),
+        None,
+        32,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let groups = run_sync_with_staleness(messages, vec!["A", "B"], config)
         .await
@@ -125,7 +143,13 @@ async fn test_staleness_integration_batch_processing() {
     ];
 
     let staleness_config = StalenessConfig::batch_processing();
-    let config = Config::with_staleness(Duration::from_millis(500), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(500)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let groups = run_sync_with_staleness(messages, vec!["A", "B", "C"], config)
         .await
@@ -159,9 +183,10 @@ async fn test_staleness_integration_mixed_configurations() {
         ..StalenessConfig::low_frequency()
     };
     let config = Config::with_staleness(
-        Duration::from_millis(300), // Large window
+        Some(Duration::from_millis(300)), // Large window
         None,
         16,
+        DropPolicy::RejectNew,
         staleness_config,
     );
 
@@ -188,13 +213,13 @@ async fn test_staleness_integration_config_builder() {
     ];
 
     // Test basic config
-    let basic_config = Config::basic(Duration::from_millis(100), None, 16);
+    let basic_config = Config::basic(Some(Duration::from_millis(100)), None, 16);
     let groups_basic = run_sync_with_staleness(messages.clone(), vec!["A", "B"], basic_config)
         .await
         .unwrap();
 
     // Test with staleness enabled
-    let staleness_config = Config::basic(Duration::from_millis(100), None, 16)
+    let staleness_config = Config::basic(Some(Duration::from_millis(100)), None, 16)
         .enable_staleness(StalenessConfig::default());
     let groups_staleness = run_sync_with_staleness(messages, vec!["A", "B"], staleness_config)
         .await
@@ -229,7 +254,13 @@ async fn test_staleness_integration_memory_efficiency() {
         enable_immediate_expiration: false, // Use lazy checking for testing
     };
 
-    let config = Config::with_staleness(Duration::from_millis(150), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(150)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let groups = run_sync_with_staleness(messages, vec!["A", "B"], config)
         .await
@@ -267,7 +298,13 @@ async fn test_staleness_integration_overflow_to_timer_wheel() {
         enable_immediate_expiration: false,
     };
 
-    let config = Config::with_staleness(Duration::from_millis(25), None, 32, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(25)),
+        None,
+        32,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let groups = run_sync_with_staleness(messages, vec!["A", "B"], config)
         .await
@@ -295,7 +332,13 @@ async fn test_staleness_integration_precision_gap_coalescing() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(50), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(50)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let groups = run_sync_with_staleness(messages, vec!["A", "B"], config)
         .await

@@ -9,7 +9,7 @@ from typing import Callable, List, Optional, Type, TypeVar
 from rclpy.node import Node
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
-from ._core import SyncConfig, SyncGroup, Synchronizer as _Synchronizer
+from ._core import DropPolicy, SyncConfig, SyncGroup, Synchronizer as _Synchronizer
 
 MsgT = TypeVar("MsgT")
 
@@ -39,8 +39,9 @@ class ROS2Synchronizer:
     def __init__(
         self,
         node: Node,
-        window_size_ms: int = 50,
+        window_size_ms: Optional[int] = 50,
         buffer_size: int = 64,
+        drop_policy: DropPolicy = DropPolicy.REJECT_NEW,
         qos: Optional[QoSProfile] = None,
     ):
         """Initialize the ROS2 synchronizer.
@@ -48,11 +49,13 @@ class ROS2Synchronizer:
         Args:
             node: The ROS2 node to create subscriptions on.
             window_size_ms: Time window in milliseconds for grouping messages.
+                Use None for infinite window (no time-based dropping).
             buffer_size: Maximum number of messages to buffer per topic.
+            drop_policy: Policy for buffer overflow (DropPolicy.REJECT_NEW or DropPolicy.DROP_OLDEST).
             qos: QoS profile for subscriptions. Defaults to best-effort, keep-last(1).
         """
         self._node = node
-        self._config = SyncConfig(window_size_ms, buffer_size)
+        self._config = SyncConfig(window_size_ms, buffer_size, drop_policy)
         self._topics: List[str] = []
         self._subscriptions = []
         self._callback: Optional[Callable[[SyncGroup], None]] = None

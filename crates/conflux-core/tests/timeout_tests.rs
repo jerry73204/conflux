@@ -52,12 +52,7 @@ async fn test_timeout_basic_expiration() {
         Ok(("B", TestMessageWithTimeout::new(3100, "b2", None))),     // no timeout, much later
     ]);
 
-    let config = Config {
-        window_size: Duration::from_millis(200),
-        start_time: None,
-        buf_size: 4,
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(200)), None, 4);
 
     let groups = run_sync_with_timeout(stream, ["A", "B"], config)
         .await
@@ -84,12 +79,7 @@ async fn test_timeout_mixed_timeout_and_no_timeout() {
         Ok(("B", TestMessageWithTimeout::new(1250, "b2", None))), // no timeout
     ]);
 
-    let config = Config {
-        window_size: Duration::from_millis(100),
-        start_time: None,
-        buf_size: 4,
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(100)), None, 4);
 
     let groups = run_sync_with_timeout(stream, ["A", "B"], config)
         .await
@@ -122,12 +112,7 @@ async fn test_timeout_prevents_memory_buildup() {
 
     let stream = stream::iter(items);
 
-    let config = Config {
-        window_size: Duration::from_millis(100),
-        start_time: None,
-        buf_size: 10,
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(100)), None, 10);
 
     let groups = run_sync_with_timeout(stream, ["A", "B"], config)
         .await
@@ -153,12 +138,7 @@ async fn test_timeout_with_different_timeouts_per_stream() {
         Ok(("slow", TestMessageWithTimeout::new(1500, "s2", Some(2000)))), // long timeout
     ]);
 
-    let config = Config {
-        window_size: Duration::from_millis(200),
-        start_time: None,
-        buf_size: 4,
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(200)), None, 4);
 
     let groups = run_sync_with_timeout(stream, ["fast", "slow"], config)
         .await
@@ -184,12 +164,7 @@ async fn test_timeout_edge_case_exact_expiration() {
         Ok(("B", TestMessageWithTimeout::new(1500, "b2", None))),      // at reference time
     ]);
 
-    let config = Config {
-        window_size: Duration::from_millis(100),
-        start_time: None,
-        buf_size: 4,
-        staleness_config: None,
-    };
+    let config = Config::basic(Some(Duration::from_millis(100)), None, 4);
 
     let groups = run_sync_with_timeout(stream, ["A", "B"], config)
         .await

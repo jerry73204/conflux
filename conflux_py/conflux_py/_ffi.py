@@ -32,12 +32,27 @@ class ConfluxResult:
     INTERNAL_ERROR = 5
 
 
+class DropPolicy:
+    """Policy for handling buffer overflow when pushing new messages."""
+
+    REJECT_NEW = 0
+    """Reject new messages when buffer is full.
+    Preserves existing data. Suitable for offline/rosbag processing.
+    """
+
+    DROP_OLDEST = 1
+    """Drop the oldest message to make room for the new one.
+    Always accepts new data. Suitable for realtime processing.
+    """
+
+
 class ConfluxConfig(Structure):
     """Configuration for creating a synchronizer."""
 
     _fields_ = [
-        ("window_size_ms", c_uint64),
+        ("window_size_ms", c_uint64),  # Use 0 for infinite window
         ("buffer_size", c_size_t),
+        ("drop_policy", c_int32),  # DropPolicy enum value
     ]
 
 
@@ -141,14 +156,19 @@ class FFISynchronizer:
     """Low-level wrapper around the conflux FFI synchronizer."""
 
     def __init__(
-        self, topics: list[str], window_size_ms: int = 50, buffer_size: int = 64
+        self,
+        topics: list[str],
+        window_size_ms: Optional[int] = 50,
+        buffer_size: int = 64,
+        drop_policy: int = DropPolicy.REJECT_NEW,
     ):
         """Create a new synchronizer.
 
         Args:
             topics: List of topic names to synchronize.
-            window_size_ms: Time window in milliseconds.
+            window_size_ms: Time window in milliseconds. Use None or 0 for infinite window.
             buffer_size: Maximum messages to buffer per topic.
+            drop_policy: Policy for buffer overflow (DropPolicy.REJECT_NEW or DropPolicy.DROP_OLDEST).
 
         Raises:
             RuntimeError: If the FFI library is not available.
@@ -166,10 +186,11 @@ class FFISynchronizer:
         self._topics = list(topics)
         self._handle: Optional[c_void_p] = None
 
-        # Create config
+        # Create config (0 means infinite window)
         config = ConfluxConfig(
-            window_size_ms=window_size_ms,
+            window_size_ms=window_size_ms if window_size_ms is not None else 0,
             buffer_size=buffer_size,
+            drop_policy=drop_policy,
         )
 
         # Create key array

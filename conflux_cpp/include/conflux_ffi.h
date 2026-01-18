@@ -19,6 +19,22 @@
 #include <stdlib.h>
 
 /**
+ * Policy for handling buffer overflow when pushing new messages.
+ */
+typedef enum ConfluxDropPolicy {
+    /**
+     * Reject new messages when buffer is full.
+     * Preserves existing data. Suitable for offline/rosbag processing.
+     */
+    ConfluxDropPolicy_RejectNew = 0,
+    /**
+     * Drop the oldest message to make room for the new one.
+     * Always accepts new data. Suitable for realtime processing.
+     */
+    ConfluxDropPolicy_DropOldest = 1,
+} ConfluxDropPolicy;
+
+/**
  * Result codes for FFI operations.
  */
 typedef enum ConfluxResult {
@@ -62,12 +78,17 @@ typedef struct ConfluxSynchronizer ConfluxSynchronizer;
 typedef struct ConfluxConfig {
     /**
      * Time window in milliseconds for grouping messages.
+     * Use 0 for infinite window (no time-based dropping).
      */
     uint64_t window_size_ms;
     /**
      * Maximum number of messages to buffer per stream.
      */
     uintptr_t buffer_size;
+    /**
+     * Policy for handling buffer overflow.
+     */
+    enum ConfluxDropPolicy drop_policy;
 } ConfluxConfig;
 
 #ifdef __cplusplus

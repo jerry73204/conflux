@@ -13,10 +13,11 @@ use futures::{
 use indexmap::IndexMap;
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll, Poll::*},
     time::Duration,
 };
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 use tracing::{debug, warn};
 
 /// Consume a stream of messages, each identified by a key, and group
@@ -42,12 +43,16 @@ where
         window_size,
         start_time,
         buf_size,
+        drop_policy,
         staleness_config,
     } = config;
 
     // Sanity check
     ensure!(buf_size >= 2);
-    ensure!(window_size > Duration::ZERO);
+    // Window size must be positive if specified (None means infinite)
+    if let Some(ws) = window_size {
+        ensure!(ws > Duration::ZERO);
+    }
 
     // Initialize buffers for respective keys.
     let buffers: IndexMap<_, _> = keys
@@ -80,7 +85,9 @@ where
         commit_ts: start_time,
         buf_size,
         window_size,
+        drop_policy,
         staleness_detector,
+        space_notify: Arc::new(Notify::new()),
     };
 
     // Construct output stream.
@@ -302,12 +309,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_config_valid_configuration() {
-        let config = Config {
-            window_size: Duration::from_millis(100),
-            start_time: None,
-            buf_size: 4,
-            staleness_config: None,
-        };
+        let config = Config::basic(Some(Duration::from_millis(100)), None, 4);
 
         let empty_stream = stream::empty::<eyre::Result<(&str, TestMessage)>>();
         let keys = ["A", "B"];
@@ -318,12 +320,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_config_buf_size_too_small() {
-        let config = Config {
-            window_size: Duration::from_millis(100),
-            start_time: None,
-            buf_size: 1,
-            staleness_config: None,
-        };
+        let config = Config::basic(Some(Duration::from_millis(100)), None, 1);
 
         let empty_stream = stream::empty::<eyre::Result<(&str, TestMessage)>>();
         let keys = ["A", "B"];
@@ -334,12 +331,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_config_window_size_zero() {
-        let config = Config {
-            window_size: Duration::ZERO,
-            start_time: None,
-            buf_size: 4,
-            staleness_config: None,
-        };
+        let config = Config::basic(Some(Duration::ZERO), None, 4);
 
         let empty_stream = stream::empty::<eyre::Result<(&str, TestMessage)>>();
         let keys = ["A", "B"];
@@ -350,12 +342,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_config_empty_key_list() {
-        let config = Config {
-            window_size: Duration::from_millis(100),
-            start_time: None,
-            buf_size: 4,
-            staleness_config: None,
-        };
+        let config = Config::basic(Some(Duration::from_millis(100)), None, 4);
 
         let empty_stream = stream::empty::<eyre::Result<(&str, TestMessage)>>();
         let keys: Vec<&str> = vec![];
@@ -366,15 +353,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_config_minimum_valid_values() {
-        let config = Config {
-            window_size: Duration::from_nanos(1), // Minimum valid window
-            start_time: None,
-            buf_size: 2, // Minimum valid buffer size
-            staleness_config: None,
-        };
+        let config = Config::basic(Some(Duration::from_nanos(1)), None, 2);
 
         let empty_stream = stream::empty::<eyre::Result<(&str, TestMessage)>>();
         let keys = ["A"];
+
+        let result = sync(empty_stream, keys, config);
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_config_infinite_window() {
+        // Infinite window (None) should be valid
+        let config = Config::offline(4);
+
+        let empty_stream = stream::empty::<eyre::Result<(&str, TestMessage)>>();
+        let keys = ["A", "B"];
 
         let result = sync(empty_stream, keys, config);
         assert!(result.is_ok());
