@@ -63,6 +63,10 @@ class ConfluxConfig(Structure):
 # void (*callback)(const char *key, int64_t timestamp_ns, void *user_data, void *context)
 POLL_CALLBACK = CFUNCTYPE(None, c_char_p, c_int64, c_void_p, c_void_p)
 
+# Callback type for conflux_for_each_live
+# void (*callback)(void *user_data, void *context)
+LIVE_CALLBACK = CFUNCTYPE(None, c_void_p, c_void_p)
+
 
 def _find_library() -> Optional[str]:
     """Find the conflux-ffi shared library."""
@@ -128,6 +132,9 @@ if _lib_path:
 
         _lib.conflux_poll.argtypes = [c_void_p, POLL_CALLBACK, c_void_p]
         _lib.conflux_poll.restype = c_int32
+
+        _lib.conflux_for_each_live.argtypes = [c_void_p, LIVE_CALLBACK, c_void_p]
+        _lib.conflux_for_each_live.restype = None
 
         _lib.conflux_key_count.argtypes = [c_void_p]
         _lib.conflux_key_count.restype = c_size_t
@@ -219,6 +226,8 @@ class FFISynchronizer:
         # Result code of the most recent push (see ConfluxResult); lets callers
         # distinguish a real buffer overflow from a late / out-of-order drop.
         self._last_result = ConfluxResult.OK
+        # Poll counter driving periodic _reconcile_refs() (see C-02 in poll()).
+        self._poll_count = 0
 
     def __del__(self):
         """Clean up the synchronizer."""
@@ -296,9 +305,40 @@ class FFISynchronizer:
         for msg_id in msg_ids_to_remove:
             del self._message_refs[msg_id]
 
+        # C-02: periodically drop references for messages that were silently
+        # evicted (DropOldest) or pruned (finite window). These never come back
+        # through push (which returned Ok) or poll (they were never matched), so
+        # without this the _message_refs table grows without bound in realtime
+        # mode. Reconciling every few polls keeps the overhead negligible.
+        self._poll_count += 1
+        if self._poll_count % 16 == 0:
+            self._reconcile_refs()
+
         if poll_result == 1:
             return result_group
         return None
+
+    def _reconcile_refs(self) -> None:
+        """Free references for messages no longer held in any buffer.
+
+        Enumerates the live messages via the FFI and drops every _message_refs
+        entry whose message is neither buffered nor already returned by poll.
+        """
+        if not self._handle or not self._message_refs:
+            return
+
+        live: set[int] = set()
+
+        def live_cb(user_data: int, context: c_void_p):
+            # user_data is the c_void_p(msg_id) value == msg_id (>= 1 since H-02)
+            if user_data:
+                live.add(user_data)
+
+        _lib.conflux_for_each_live(self._handle, LIVE_CALLBACK(live_cb), None)
+
+        for msg_id in list(self._message_refs.keys()):
+            if msg_id not in live:
+                del self._message_refs[msg_id]
 
     @property
     def topics(self) -> list[str]:

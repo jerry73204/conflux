@@ -321,6 +321,39 @@ pub unsafe extern "C" fn conflux_poll(
     }
 }
 
+/// Invoke `callback` once for every message currently held in a buffer, passing
+/// its `user_data`.
+///
+/// C-02: DropOldest eviction and finite-window pruning discard messages silently
+/// (the push still returns Ok), so a caller that keeps a table of message
+/// references keyed by `user_data` (e.g. the Python binding) never learns they
+/// were dropped and leaks one reference per evicted message. This lets the caller
+/// reconcile its table against the set of still-live messages and free the rest.
+///
+/// # Safety
+///
+/// `sync` must be a valid pointer from `conflux_synchronizer_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn conflux_for_each_live(
+    sync: *const ConfluxSynchronizer,
+    callback: Option<extern "C" fn(user_data: *mut c_void, context: *mut c_void)>,
+    context: *mut c_void,
+) {
+    unsafe {
+        if sync.is_null() {
+            return;
+        }
+        let sync = &*sync;
+        if let Some(cb) = callback {
+            for buffer in sync.state.buffers.values() {
+                for msg in buffer.iter() {
+                    cb(msg.user_data, context);
+                }
+            }
+        }
+    }
+}
+
 /// Get the number of keys registered with the synchronizer.
 ///
 /// # Safety

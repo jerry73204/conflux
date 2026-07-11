@@ -39,6 +39,11 @@ where
         self.buffer.back()
     }
 
+    /// Iterate over the buffered messages in order (front to back).
+    pub fn iter(&self) -> std::collections::vec_deque::Iter<'_, T> {
+        self.buffer.iter()
+    }
+
     pub fn pop_front(&mut self) -> Option<T> {
         self.buffer.pop_front()
     }

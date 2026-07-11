@@ -185,6 +185,24 @@ int32_t conflux_poll(struct ConfluxSynchronizer *sync,
                      void *context);
 
 /**
+ * Invoke `callback` once for every message currently held in a buffer, passing
+ * its `user_data`.
+ *
+ * C-02: DropOldest eviction and finite-window pruning discard messages silently
+ * (the push still returns Ok), so a caller that keeps a table of message
+ * references keyed by `user_data` (e.g. the Python binding) never learns they
+ * were dropped and leaks one reference per evicted message. This lets the caller
+ * reconcile its table against the set of still-live messages and free the rest.
+ *
+ * # Safety
+ *
+ * `sync` must be a valid pointer from `conflux_synchronizer_new`.
+ */
+void conflux_for_each_live(const struct ConfluxSynchronizer *sync,
+                           void (*callback)(void *user_data, void *context),
+                           void *context);
+
+/**
  * Get the number of keys registered with the synchronizer.
  *
  * # Safety
