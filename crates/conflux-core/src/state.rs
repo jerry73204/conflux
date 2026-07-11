@@ -312,6 +312,16 @@ where
                     return Err(PushError::BufferFull(item));
                 }
                 DropPolicy::DropOldest => {
+                    // M-07: only evict the oldest message if the incoming one
+                    // would actually be accepted (monotonic timestamp). Otherwise
+                    // the eviction destroys a good buffered message and the
+                    // subsequent try_push still rejects the new one as OutOfOrder --
+                    // strictly worse than RejectNew. Check ordering first.
+                    if let Some(last_ts) = buffer.last_ts()
+                        && last_ts >= timestamp
+                    {
+                        return Err(PushError::OutOfOrder(item));
+                    }
                     buffer.pop_front();
                 }
             }

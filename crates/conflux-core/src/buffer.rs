@@ -75,9 +75,11 @@ where
     //         .or(self.last_ts)
     // }
 
-    // pub fn last_ts(&self) -> Option<Duration> {
-    //     self.last_ts
-    // }
+    /// Timestamp of the most recently accepted message (monotonic high-water
+    /// mark). A push with a timestamp <= this is rejected as out-of-order.
+    pub fn last_ts(&self) -> Option<Duration> {
+        self.last_ts
+    }
 
     /// Drops messages before the a specific timestamp and returns the
     /// number of dropped messages.

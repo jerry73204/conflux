@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use std::{
     ffi::{CStr, c_char, c_void},
     ptr,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use tokio::sync::Notify;
@@ -20,7 +20,12 @@ use tokio::sync::Notify;
 /// The synchronizer manages multiple message streams and outputs
 /// synchronized groups when messages fall within the configured time window.
 pub struct ConfluxSynchronizer {
-    state: State<String, FfiMessage>,
+    // M-08: the Python binding may drive push/poll from different threads under a
+    // MultiThreadedExecutor while ctypes has released the GIL. Guard the mutable
+    // core State with a Mutex so concurrent FFI calls are serialized instead of
+    // aliasing `&mut State` (undefined behavior). `keys` is immutable after
+    // construction and needs no lock.
+    state: Mutex<State<String, FfiMessage>>,
     keys: Vec<String>,
 }
 
@@ -176,7 +181,7 @@ pub unsafe extern "C" fn conflux_synchronizer_new(
         };
 
         let sync = Box::new(ConfluxSynchronizer {
-            state,
+            state: Mutex::new(state),
             keys: key_strings,
         });
 
@@ -224,7 +229,7 @@ pub unsafe extern "C" fn conflux_push_message(
             return ConfluxResult::NullPointer;
         }
 
-        let sync = &mut *sync;
+        let sync = &*sync;
         let key_str = match CStr::from_ptr(key).to_str() {
             Ok(s) => s.to_string(),
             Err(_) => return ConfluxResult::InvalidArgument,
@@ -250,7 +255,7 @@ pub unsafe extern "C" fn conflux_push_message(
         // are normal under BEST_EFFORT and must not be counted as buffer
         // overflows, otherwise the rejection statistics and overflow warnings
         // are inflated (even DropOldest, which never really overflows).
-        match sync.state.push(key_str, message) {
+        match sync.state.lock().unwrap().push(key_str, message) {
             Ok(()) => ConfluxResult::Ok,
             Err(PushError::BufferFull(_)) => ConfluxResult::BufferFull,
             Err(PushError::LateMessage(_)) => ConfluxResult::LateMessage,
@@ -303,9 +308,12 @@ pub unsafe extern "C" fn conflux_poll(
             return -1;
         }
 
-        let sync = &mut *sync;
+        let sync = &*sync;
 
-        match sync.state.try_match() {
+        // Take the matched group under the lock, then release it before invoking
+        // the (Python) callback, so the callback can never re-enter and deadlock.
+        let group_opt = sync.state.lock().unwrap().try_match();
+        match group_opt {
             Some(group) => {
                 if let Some(cb) = callback {
                     for (key, msg) in group {
@@ -344,11 +352,19 @@ pub unsafe extern "C" fn conflux_for_each_live(
             return;
         }
         let sync = &*sync;
+        // Collect the live user_data under the lock, then release it before
+        // invoking the callback.
+        let ptrs: Vec<*mut c_void> = {
+            let state = sync.state.lock().unwrap();
+            state
+                .buffers
+                .values()
+                .flat_map(|buffer| buffer.iter().map(|msg| msg.user_data))
+                .collect()
+        };
         if let Some(cb) = callback {
-            for buffer in sync.state.buffers.values() {
-                for msg in buffer.iter() {
-                    cb(msg.user_data, context);
-                }
+            for ptr in ptrs {
+                cb(ptr, context);
             }
         }
     }
@@ -380,7 +396,7 @@ pub unsafe extern "C" fn conflux_is_ready(sync: *const ConfluxSynchronizer) -> b
         if sync.is_null() {
             return false;
         }
-        (*sync).state.is_ready()
+        (*sync).state.lock().unwrap().is_ready()
     }
 }
 
@@ -395,7 +411,7 @@ pub unsafe extern "C" fn conflux_is_empty(sync: *const ConfluxSynchronizer) -> b
         if sync.is_null() {
             return true;
         }
-        (*sync).state.is_empty()
+        (*sync).state.lock().unwrap().is_empty()
     }
 }
 
@@ -426,6 +442,8 @@ pub unsafe extern "C" fn conflux_buffer_len(
         };
 
         sync.state
+            .lock()
+            .unwrap()
             .buffers
             .get(key_str)
             .map(|b| b.len())
