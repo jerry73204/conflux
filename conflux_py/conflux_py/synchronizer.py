@@ -11,6 +11,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
 from ._core import DropPolicy, SyncConfig, SyncGroup, Synchronizer as _Synchronizer
+from ._ffi import ConfluxResult
 
 MsgT = TypeVar("MsgT")
 
@@ -24,6 +25,14 @@ class SyncStatistics:
 
     messages_rejected: Dict[str, int] = field(default_factory=dict)
     """Count of messages rejected due to buffer overflow per topic."""
+
+    messages_dropped: Dict[str, int] = field(default_factory=dict)
+    """Count of messages dropped as late / out-of-order per topic.
+
+    These are normal under BEST_EFFORT QoS and are NOT buffer overflows, so they
+    are tracked separately from ``messages_rejected`` and do not trigger overflow
+    warnings or inflate the rejection rate.
+    """
 
     groups_synchronized: int = 0
     """Count of synchronized groups produced."""
@@ -137,6 +146,7 @@ class ROS2Synchronizer:
         # Initialize statistics for this topic
         self._stats.messages_received[topic] = 0
         self._stats.messages_rejected[topic] = 0
+        self._stats.messages_dropped[topic] = 0
 
         def msg_callback(msg, topic=topic):
             if self._sync is not None:
@@ -151,8 +161,15 @@ class ROS2Synchronizer:
                 accepted = self._sync.push(topic, timestamp_ns, msg)
 
                 if not accepted:
-                    self._stats.messages_rejected[topic] += 1
-                    self._log_buffer_overflow(topic)
+                    # H-05: only a real buffer overflow counts as a rejection and
+                    # triggers an overflow warning. Late / out-of-order drops are
+                    # normal under BEST_EFFORT and are tracked separately so they
+                    # don't inflate the rejection rate or spam warnings.
+                    if self._sync.last_push_result == ConfluxResult.BUFFER_FULL:
+                        self._stats.messages_rejected[topic] += 1
+                        self._log_buffer_overflow(topic)
+                    else:
+                        self._stats.messages_dropped[topic] += 1
 
                 self._poll()
 

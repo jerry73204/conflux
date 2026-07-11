@@ -216,6 +216,15 @@ class Synchronizer:
 
         return self._ffi_sync.push(topic, timestamp_ns, message)
 
+    @property
+    def last_push_result(self) -> int:
+        """Result code (ConfluxResult) of the most recent push().
+
+        Lets callers distinguish a real buffer overflow (BUFFER_FULL) from a
+        late / out-of-order drop, which are normal under BEST_EFFORT QoS.
+        """
+        return self._ffi_sync._last_result
+
     def poll(self) -> Optional[SyncGroup]:
         """Poll for a synchronized group of messages.
 

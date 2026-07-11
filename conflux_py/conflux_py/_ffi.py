@@ -30,6 +30,9 @@ class ConfluxResult:
     KEY_NOT_FOUND = 3
     NULL_POINTER = 4
     INTERNAL_ERROR = 5
+    LATE_MESSAGE = 6
+    OUT_OF_ORDER = 7
+    TIMEOUT = 8
 
 
 class DropPolicy:
@@ -206,9 +209,16 @@ class FFISynchronizer:
         if not self._handle:
             raise RuntimeError("Failed to create synchronizer")
 
-        # Store references to prevent garbage collection of message objects
+        # Store references to prevent garbage collection of message objects.
+        # H-02: start IDs at 1, not 0. Message IDs are passed across the FFI as
+        # ctypes.c_void_p(msg_id); c_void_p(0) is a NULL pointer, which ctypes
+        # maps back to None in the poll callback, so the first message (id 0)
+        # could never be looked up in _message_refs and was silently dropped.
         self._message_refs: dict[int, object] = {}
-        self._next_id = 0
+        self._next_id = 1
+        # Result code of the most recent push (see ConfluxResult); lets callers
+        # distinguish a real buffer overflow from a late / out-of-order drop.
+        self._last_result = ConfluxResult.OK
 
     def __del__(self):
         """Clean up the synchronizer."""
@@ -244,6 +254,7 @@ class FFISynchronizer:
             timestamp_ns,
             ctypes.c_void_p(msg_id),
         )
+        self._last_result = result
 
         if result == ConfluxResult.KEY_NOT_FOUND:
             del self._message_refs[msg_id]

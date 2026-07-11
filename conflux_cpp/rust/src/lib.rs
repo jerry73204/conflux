@@ -3,7 +3,9 @@
 //! This module provides a C-compatible interface to the conflux-core
 //! synchronization algorithm for use in C++ ROS2 nodes.
 
-use conflux_core::{DropPolicy as CoreDropPolicy, WithTimestamp, buffer::Buffer, state::State};
+use conflux_core::{
+    DropPolicy as CoreDropPolicy, WithTimestamp, buffer::Buffer, state::PushError, state::State,
+};
 use indexmap::IndexMap;
 use std::{
     ffi::{CStr, c_char, c_void},
@@ -99,6 +101,12 @@ pub enum ConfluxResult {
     NullPointer = 4,
     /// Internal error.
     InternalError = 5,
+    /// Message rejected: timestamp is before the commit time (arrived too late).
+    LateMessage = 6,
+    /// Message rejected: timestamp is not monotonically increasing.
+    OutOfOrder = 7,
+    /// Timed out waiting for buffer space (blocking push only).
+    Timeout = 8,
 }
 
 /// Create a new synchronizer with the given configuration and keys.
@@ -237,9 +245,18 @@ pub unsafe extern "C" fn conflux_push_message(
             user_data,
         };
 
+        // H-05: map each push failure to a distinct result code instead of
+        // collapsing them all to BufferFull. Late and out-of-order rejections
+        // are normal under BEST_EFFORT and must not be counted as buffer
+        // overflows, otherwise the rejection statistics and overflow warnings
+        // are inflated (even DropOldest, which never really overflows).
         match sync.state.push(key_str, message) {
             Ok(()) => ConfluxResult::Ok,
-            Err(_) => ConfluxResult::BufferFull,
+            Err(PushError::BufferFull(_)) => ConfluxResult::BufferFull,
+            Err(PushError::LateMessage(_)) => ConfluxResult::LateMessage,
+            Err(PushError::OutOfOrder(_)) => ConfluxResult::OutOfOrder,
+            Err(PushError::Timeout(_)) => ConfluxResult::Timeout,
+            Err(PushError::UnknownKey(_)) => ConfluxResult::KeyNotFound,
         }
     }
 }
