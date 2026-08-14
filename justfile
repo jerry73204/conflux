@@ -77,12 +77,12 @@ test: test-rust test-cpp test-python
 
 # Run Rust tests
 test-rust:
-    cargo test --workspace
+    cargo test --workspace --features tokio
     cd conflux_cpp/rust && cargo test
 
 # Run Rust tests with nextest
 test-rust-nextest:
-    cargo nextest run --workspace --no-fail-fast
+    cargo nextest run --workspace --features tokio --no-fail-fast
     cd conflux_cpp/rust && cargo nextest run --no-fail-fast
 
 # Run C++ tests (currently no unit tests, only lint checks available)
@@ -91,10 +91,12 @@ test-cpp:
     @echo "Run 'just colcon-test' for ament_lint style checks"
 
 # Run Python tests
+# NOTE: pytest is invoked directly rather than via `colcon test`. colcon runs
+# `setup.py test` (unittest) for ament_python packages, which collects 0 of these
+# pytest-style tests and still exits 0 -- silently reporting success.
 test-python:
-    @if [ -d "conflux_py" ]; then \
-        colcon test --packages-select conflux_py; \
-        colcon test-result --verbose; \
+    @if [ -d "conflux_py/test" ]; then \
+        python3 -m pytest conflux_py/test/ -v; \
     else \
         echo "No Python tests (conflux_py not yet created)"; \
     fi

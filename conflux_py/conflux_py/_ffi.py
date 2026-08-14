@@ -182,8 +182,11 @@ class FFISynchronizer:
 
         Raises:
             RuntimeError: If the FFI library is not available.
-            ValueError: If topics is empty.
+            ValueError: If topics is empty or buffer_size is less than 2.
         """
+        # Set before any validation so __del__ is safe on a partially built object.
+        self._handle: Optional[c_void_p] = None
+
         if not is_available():
             raise RuntimeError(
                 "conflux-ffi library not found. Searched paths include AMENT_PREFIX_PATH. "
@@ -193,8 +196,10 @@ class FFISynchronizer:
         if not topics:
             raise ValueError("topics list cannot be empty")
 
+        if buffer_size < 2:
+            raise ValueError(f"buffer_size must be at least 2, got {buffer_size}")
+
         self._topics = list(topics)
-        self._handle: Optional[c_void_p] = None
 
         # Create config (0 means infinite window)
         config = ConfluxConfig(

@@ -1,4 +1,4 @@
-use conflux_core::{Config, StalenessConfig, WithTimestamp, sync};
+use conflux_core::{Config, DropPolicy, StalenessConfig, WithTimestamp, sync};
 use futures::{FutureExt, StreamExt, TryStreamExt, stream};
 use indexmap::IndexMap;
 use std::time::{Duration, Instant};
@@ -59,9 +59,10 @@ async fn test_staleness_with_actual_delays() {
     };
 
     let config = Config::with_staleness(
-        Duration::from_millis(100), // Window size
+        Some(Duration::from_millis(100)), // Window size
         None,
         16,
+        DropPolicy::RejectNew,
         staleness_config,
     );
 
@@ -130,7 +131,13 @@ async fn test_staleness_prevents_memory_buildup() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(50), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(50)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -189,7 +196,13 @@ async fn test_staleness_timer_wheel_overflow() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(30), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(30)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -242,7 +255,13 @@ async fn test_staleness_precision_gap_in_action() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(50), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(50)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -295,7 +314,7 @@ async fn test_no_staleness_baseline() {
     .map(Ok); // Wrap each result in Ok
 
     // Config WITHOUT staleness
-    let config = Config::basic(Duration::from_millis(100), None, 16);
+    let config = Config::basic(Some(Duration::from_millis(100)), None, 16);
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -348,7 +367,13 @@ async fn test_messages_forcefully_popped_from_buffer() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(50), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(50)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -420,7 +445,13 @@ async fn test_message_popped_before_matching() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(50), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(50)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -486,7 +517,13 @@ async fn test_message_popped_after_partial_matching() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(50), None, 16, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(50)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B", "C"], config).unwrap();
@@ -547,9 +584,10 @@ async fn test_immediate_vs_lazy_staleness_difference() {
     };
 
     let config_immediate = Config::with_staleness(
-        Duration::from_millis(50),
+        Some(Duration::from_millis(50)),
         None,
         16,
+        DropPolicy::RejectNew,
         staleness_config_immediate,
     );
 
@@ -588,8 +626,13 @@ async fn test_immediate_vs_lazy_staleness_difference() {
         ..StalenessConfig::default()
     };
 
-    let config_lazy =
-        Config::with_staleness(Duration::from_millis(50), None, 16, staleness_config_lazy);
+    let config_lazy = Config::with_staleness(
+        Some(Duration::from_millis(50)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config_lazy,
+    );
 
     let (output_stream_lazy, _) = sync(messages_lazy.boxed(), vec!["A", "B"], config_lazy).unwrap();
 
@@ -651,7 +694,7 @@ async fn test_no_staleness_messages_stay_indefinitely() {
 
     // Config WITHOUT staleness - messages should stay indefinitely
     // Use larger window to allow for the delayed synchronization
-    let config = Config::basic(Duration::from_millis(100), None, 16);
+    let config = Config::basic(Some(Duration::from_millis(100)), None, 16);
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -729,7 +772,7 @@ async fn test_extreme_delay_without_staleness() {
     .map(Ok);
 
     // Config WITHOUT staleness - use larger window for extreme delays
-    let config = Config::basic(Duration::from_millis(200), None, 16);
+    let config = Config::basic(Some(Duration::from_millis(200)), None, 16);
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -801,8 +844,13 @@ async fn test_staleness_enabled_vs_disabled_comparison() {
         ..StalenessConfig::default()
     };
 
-    let config_with_staleness =
-        Config::with_staleness(Duration::from_millis(50), None, 16, staleness_config);
+    let config_with_staleness = Config::with_staleness(
+        Some(Duration::from_millis(50)),
+        None,
+        16,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let (output_stream_staleness, _) = sync(
         test_scenario().boxed(),
@@ -819,7 +867,7 @@ async fn test_staleness_enabled_vs_disabled_comparison() {
     let groups_with_staleness = result_staleness.unwrap().unwrap();
 
     // Test WITHOUT staleness (disabled)
-    let config_no_staleness = Config::basic(Duration::from_millis(50), None, 16);
+    let config_no_staleness = Config::basic(Some(Duration::from_millis(50)), None, 16);
 
     let (output_stream_no_staleness, _) =
         sync(test_scenario().boxed(), vec!["A", "B"], config_no_staleness).unwrap();
@@ -890,7 +938,7 @@ async fn test_memory_buildup_without_staleness() {
     .map(Ok);
 
     // Config WITHOUT staleness - allows unlimited buffer growth
-    let config = Config::basic(Duration::from_millis(100), None, 16);
+    let config = Config::basic(Some(Duration::from_millis(100)), None, 16);
 
     let (output_stream, _feedback_receiver) =
         sync(messages.boxed(), vec!["A", "B"], config).unwrap();
@@ -973,7 +1021,13 @@ async fn test_staleness_stress_high_frequency_bursts() {
         ..StalenessConfig::default()
     };
 
-    let config = Config::with_staleness(Duration::from_millis(200), None, 32, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(200)),
+        None,
+        32,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let start_time = Instant::now();
     let (output_stream, _feedback_receiver) =
@@ -1057,7 +1111,13 @@ async fn test_staleness_stress_extreme_imbalance() {
         precision_gap: Duration::from_micros(100), // Ultra-high frequency checking
     };
 
-    let config = Config::with_staleness(Duration::from_millis(100), None, 64, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(100)),
+        None,
+        64,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let start_time = Instant::now();
     let (output_stream, _feedback_receiver) =
@@ -1153,7 +1213,13 @@ async fn test_staleness_stress_concurrent_multi_stream() {
         precision_gap: Duration::from_millis(5), // Less aggressive checking
     };
 
-    let config = Config::with_staleness(Duration::from_millis(300), None, 128, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(300)),
+        None,
+        128,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let start_time = Instant::now();
     let (output_stream, _feedback_receiver) =
@@ -1251,7 +1317,13 @@ async fn test_staleness_stress_timer_wheel_overflow_intensive() {
         precision_gap: Duration::from_micros(50), // Ultra-high frequency
     };
 
-    let config = Config::with_staleness(Duration::from_millis(100), None, 256, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(100)),
+        None,
+        256,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let start_time = Instant::now();
     let (output_stream, _feedback_receiver) =
@@ -1343,7 +1415,13 @@ async fn test_staleness_stress_mixed_timing_chaos() {
         precision_gap: Duration::from_millis(2), // Frequent but not extreme
     };
 
-    let config = Config::with_staleness(Duration::from_millis(100), None, 64, staleness_config);
+    let config = Config::with_staleness(
+        Some(Duration::from_millis(100)),
+        None,
+        64,
+        DropPolicy::RejectNew,
+        staleness_config,
+    );
 
     let start_time = Instant::now();
     let (output_stream, _feedback_receiver) =
