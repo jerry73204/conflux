@@ -341,20 +341,31 @@ Statistics are logged on Ctrl+C shutdown:
 
 ## Known Issues
 
-**A test recipe that cannot fail is worse than no recipe.** Two of them shipped
-that way and hid real breakage for an unknown period:
+**A test recipe that cannot fail is worse than no recipe.** Four shipped that way
+and hid real breakage for an unknown period:
 
 - `just test-rust` ran `cargo test --workspace` without the feature that gated
   the staleness suite, so 20 tests compiled to nothing while the suite reported
   green -- and they had in fact stopped compiling after a `Config` API change.
+  (H-13)
 - `just test-python` ran the tests through `colcon test`, which invokes
   `setup.py test` (unittest) for ament_python packages. These are pytest-style
-  tests, so unittest collected 0 of them and exited 0.
+  tests, so unittest collected 0 of them and exited 0. Repairing it immediately
+  exposed a real bug. (M-25)
 - `just test-cpp` echoed two lines and exited 0 while `conflux_cpp` -- which
-  builds the library every LCTK solver loads -- had no tests at all.
+  builds the library every LCTK solver loads -- had no tests at all. (L-22)
+- `crates/conflux-ros2` had no runner at all: it is excluded from the cargo
+  workspace, so nothing ever ran its tests. A whole duplicate synchronization
+  algorithm lived there, covered only by tests that exercised a bare `VecDeque`.
+  (H-14)
 
-All three are fixed. When adding a test recipe, break an assertion deliberately
-and confirm a non-zero exit before trusting it.
+All four are fixed. Note the two distinct shapes: a recipe that runs but cannot
+fail, and a suite that nothing runs. The first hides regressions; the second
+hides entire subsystems.
+
+**When adding or changing a test recipe, break an assertion deliberately and
+confirm a non-zero exit before trusting it.** That check is seconds long and is
+what caught every one of these.
 
 `just test-cpp` runs the gtest target **and** the ament linters (copyright,
 cppcheck, cpplint, lint_cmake, xmllint), all of which are green.
