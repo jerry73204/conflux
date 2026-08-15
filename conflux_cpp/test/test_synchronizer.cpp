@@ -1,3 +1,21 @@
+// Copyright 2026 jerry73204
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// This package is dual-licensed: "MIT OR Apache-2.0". The Apache-2.0 notice
+// above is reproduced in full because the linter requires a recognised license
+// block; it does not narrow the choice. See LICENSE-MIT and LICENSE-APACHE.
+
 // L-22: conflux_cpp builds libconflux_ffi.so -- the library every LCTK solver
 // node loads -- and had no test of any kind, behind a `just test-cpp` recipe
 // that echoed two lines and exited 0.
@@ -8,17 +26,18 @@
 // FFI and core layers (conflux-ffi's tests, conflux-core's suite); what is
 // tested here is the C++ wrapper's own bookkeeping and dispatch.
 
-#include "conflux/synchronizer.hpp"
-#include "conflux/types.hpp"
-
-#include <geometry_msgs/msg/point_stamped.hpp>
 #include <gtest/gtest.h>
-#include <rclcpp/rclcpp.hpp>
 
 #include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#include "conflux/synchronizer.hpp"
+#include "conflux/types.hpp"
 
 namespace {
 

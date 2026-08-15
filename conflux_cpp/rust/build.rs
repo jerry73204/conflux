@@ -23,6 +23,7 @@ fn main() {
         .parent()
         .unwrap()
         .join("include")
+        .join("conflux")
         .join("conflux_ffi.h");
 
     if let Some(parent) = header_path.parent() {

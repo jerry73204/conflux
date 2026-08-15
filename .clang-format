@@ -12,23 +12,17 @@ AllowShortLoopsOnASingleLine: false
 DerivePointerAlignment: false
 PointerAlignment: Left
 AccessModifierOffset: -4
-IncludeBlocks: Regroup
-IncludeCategories:
-  # System headers
-  - Regex: '<[a-z_]+>'
-    Priority: 4
-  # C++ standard library
-  - Regex: '<[a-z_]+/.*>'
-    Priority: 3
-  # ROS2 headers
-  - Regex: '"rclcpp/.*"'
-    Priority: 2
-  - Regex: '".*_msgs/.*"'
-    Priority: 2
-  # Local headers
-  - Regex: '".*"'
-    Priority: 1
-SortIncludes: CaseSensitive
+# L-27: keep clang-format out of the include-ordering business.
+#
+# This used to be `IncludeBlocks: Regroup` with categories that placed local
+# headers first -- the exact inverse of what ament_cpplint requires
+# (build/include_order: own header, C system, C++ system, other). With both
+# tools active and disagreeing, one of them was permanently red, which is a
+# large part of why the C++ lint signal was unusable. Preserving the author's
+# blocks lets clang-format own whitespace and cpplint own ordering, which is a
+# division both can satisfy.
+IncludeBlocks: Preserve
+SortIncludes: false
 SpaceAfterCStyleCast: false
 SpaceAfterTemplateKeyword: true
 SpaceBeforeAssignmentOperators: true

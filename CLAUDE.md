@@ -356,9 +356,13 @@ that way and hid real breakage for an unknown period:
 All three are fixed. When adding a test recipe, break an assertion deliberately
 and confirm a non-zero exit before trusting it.
 
-Note: `just test-cpp` is scoped to the gtest target. The ament_lint tests
-(copyright, cpplint, uncrustify) are red on pre-existing sources; run them with
-`just colcon-test`.
+`just test-cpp` runs the gtest target **and** the ament linters (copyright,
+cppcheck, cpplint, lint_cmake, xmllint), all of which are green.
+`ament_uncrustify` is deliberately excluded: this project formats C++ with
+clang-format (`.clang-format`, Google style, 4-space indent) and ROS's uncrustify
+profile is a different, incompatible style. Running both guarantees one is
+permanently red, which is what made the lint signal useless before. Formatting is
+owned by `just format` / `just format-check`.
 
 ## Testing
 
