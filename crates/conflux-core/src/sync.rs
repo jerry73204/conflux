@@ -18,7 +18,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{Notify, watch};
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Consume a stream of messages, each identified by a key, and group
 /// up messages within a time window with distinct keys.
@@ -99,8 +99,37 @@ where
     Ok((output_stream.boxed(), feedback_rx))
 }
 
+/// Drain whatever remains once no more input will arrive.
+///
+/// `advance` already forces progress when a buffer is full, but at end of input
+/// there is nothing left to wait for at all, so keep dropping the oldest message
+/// until a group forms or a stream runs dry.
+fn drain<K, T>(state: &mut State<K, T>) -> Option<Result<IndexMap<K, T>>>
+where
+    K: Key,
+    T: WithTimestamp + Clone,
+{
+    loop {
+        // `is_empty` is true when *any* buffer is empty: no group can be formed.
+        if state.is_empty() {
+            return None;
+        }
+        if let Some(matching) = state.advance() {
+            return Some(Ok(matching));
+        }
+        if !state.drop_min() {
+            return None;
+        }
+    }
+}
+
 /// The polling function is repeated called to generated batched
 /// messages.
+///
+/// H-12: the matching rules live in [`State::advance`], shared with the C FFI
+/// driver. This function is only responsible for feeding the state from the
+/// input stream and for end-of-input draining -- it no longer carries its own
+/// copy of the match/drop policy, which is how the two pipelines drifted apart.
 fn poll<K, T, S>(
     mut input_stream: Pin<&mut Option<S>>,
     state: &mut State<K, T>,
@@ -113,176 +142,57 @@ where
 {
     let group = if let Some(mut input_stream_mut) = input_stream.as_mut().as_pin_mut() {
         // Case: the input stream is not depleted yet.
-        // println!("......\n{state:#?}\n......");
-        // Loop until a valid group is found.
         loop {
-            // Clean up expired messages using the latest commit timestamp as reference
+            // Clean up expired messages using the latest commit timestamp as reference.
             if let Some(commit_ts) = state.commit_ts {
                 let _expired_count = state.drop_expired_messages(commit_ts);
             }
 
-            // Process staleness expiration if configured
+            // Process staleness expiration if configured.
             let _stale_count = state.process_staleness_expiration();
 
-            // println!("......\n{state:#?}\n......");
-            if !state.is_ready() {
-                // eprintln!("not ready");
-                // Case: Any one of the buffer has one or zero
-                // message.
-
-                // Consume one message from the input stream.
-                let item = input_stream_mut.as_mut().poll_next(ctx);
-                // println!("............\n{:#?}\n",state);
-                match item {
-                    Ready(Some(Ok(item))) => {
-                        let (key, item) = item;
-                        let ok = state.push(key, item).is_ok();
-                        if !ok {
-                            debug!("drop a late message")
-                        }
-                    } // A message is returned
-                    Ready(Some(Err(err))) => {
-                        // An error is returned
-                        input_stream.set(None);
-                        break Some(Err(err));
-                    }
-                    Ready(None) => {
-                        // The input stream is depleted.
-                        // input_stream.set(None);
-                        // break None;
-                        // println!("........\n{:#?}\n........",state);
-                        if !state.is_empty() {
-                            // println!("checking the buffers still have datas");
-                            if let Some(matching) = state.try_match() {
-                                state.update_feedback();
-                                // println!("when input stream is depeleted and there are still matching");
-                                input_stream.set(None);
-                                break Some(Ok(matching));
-                            } else {
-                                // println!("there are still datas, but matching has failed");
-                                // input_stream.set(None);
-                                // break None;
-                                state.drop_min();
-                                continue;
-                            }
-                        } else {
-                            input_stream.set(None);
-                            break None;
-                        }
-                    }
-                    Pending => {
-                        // The input stream is not ready.
-                        return Pending;
-                    }
-                };
-
-                // Try to insert the message.
-                // let ok = state.push(key, item).is_ok();
-                // state.update_feedback();
-
-                // If failed, tell the input stream to catch up and
-                // retry.
-                // if !ok {
-                //     debug!("drop a late message");
-                // }
-            } else if state.is_full() {
-                // eprintln!("full");
-                // Case: All buffers are full.
-
-                // Try to group up messages. If successful, return the
-                // group. Otherwise, drop the message with minimum
-                // timestamp and retry.
-                if let Some(matching) = state.try_match() {
-                    state.update_feedback();
-                    break Some(Ok(matching));
-                } else {
-                    warn!(
-                        "Unable to find a new matching while all buffers are full.\
-                         Drop one message anyway."
-                    );
-                    state.drop_min();
-                    state.update_feedback();
-                }
-            } else {
-                // eprintln!("ready");
-                // Case: All buffers have at least 2 messages and not
-                // all buffers are full.
-
-                // Consume a message from the input stream.
-                let item = input_stream_mut.as_mut().poll_next(ctx);
-
-                match item {
-                    Ready(Some(Ok(item))) => {
-                        let (_key, _item) = item;
-                        if state.push(_key, _item).is_err() {
-                            state.update_feedback();
-                            continue;
-                        }
-                    }
-                    Ready(Some(Err(err))) => {
-                        input_stream.set(None);
-                        break Some(Err(err));
-                    }
-                    Ready(None) => {
-                        // println!("input stream has been depleted.............");
-                        // input_stream.set(None);
-                        // break None; // TODO
-                        if let Some(matching) = state.try_match() {
-                            state.update_feedback();
-                            input_stream.set(None);
-                            break Some(Ok(matching));
-                        } else {
-                            state.drop_min();
-                            continue;
-                            // input_stream.set(None);
-                            // break None;
-                        }
-                    }
-                    Pending => {
-                        return Pending;
-                    }
-                };
-
-                // Try to insert the message to one of the buffer.  If
-                // not successful, emit a feedback to tell the input
-                // stream to catch up.
-                // if state.push(key, item).is_err() {
-                //     // debug!("drop a late message for device {:?}", device);
-                //     state.update_feedback();
-                //     continue;
-                // }
-
-                // Try to group up messages.
-                let matching = state.try_match();
-
-                // Emit a feedback.
+            // Emit as soon as a group is available. `advance` also forces
+            // progress when a buffer is full and nothing can match, so this
+            // cannot spin forever waiting on a stream that can no longer grow.
+            if let Some(matching) = state.advance() {
                 state.update_feedback();
+                break Some(Ok(matching));
+            }
 
-                // Emit the group if a group is successfully formed.
-                if let Some(matching) = matching {
-                    break Some(Ok(matching));
+            // No group yet -- take another message from the input.
+            match input_stream_mut.as_mut().poll_next(ctx) {
+                Ready(Some(Ok((key, item)))) => {
+                    if state.push(key, item).is_err() {
+                        // Late, out-of-order, or rejected by the drop policy.
+                        debug!("dropped a rejected message");
+                        state.update_feedback();
+                    }
+                }
+                Ready(Some(Err(err))) => {
+                    input_stream.set(None);
+                    break Some(Err(err));
+                }
+                Ready(None) => {
+                    // Input exhausted: drain whatever is still buffered.
+                    let drained = drain(state);
+                    state.update_feedback();
+                    input_stream.set(None);
+                    break drained;
+                }
+                Pending => {
+                    // The input stream is not ready.
+                    return Pending;
                 }
             }
         }
     } else {
-        // eprintln!("depleted");
         // Case: the input stream is depleted.
-        // Loop until a valid group is found.
-        loop {
-            // Clean up expired messages using the latest commit timestamp as reference
-            if let Some(commit_ts) = state.commit_ts {
-                let _expired_count = state.drop_expired_messages(commit_ts);
-            }
-
-            if state.is_empty() {
-                break None;
-            } else if let Some(matching) = state.try_match() {
-                break Some(Ok(matching));
-            } else {
-                // println!("......\n{state:#?}\n......");
-                state.drop_min();
-            }
+        // Clean up expired messages using the latest commit timestamp as reference.
+        if let Some(commit_ts) = state.commit_ts {
+            let _expired_count = state.drop_expired_messages(commit_ts);
         }
+
+        drain(state)
     };
 
     Ready(group)

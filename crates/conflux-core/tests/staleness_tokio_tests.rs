@@ -31,18 +31,22 @@ async fn test_staleness_with_actual_delays() {
     let test_start = Instant::now();
 
     // Create stream from array of async blocks (boxed to have same type)
+    // H-11: the delay must strand a message *alone*, past its own staleness
+    // timeout, for anything to expire. A delay between two complete pairs never
+    // does -- each message finds its partner well inside the timeout. (Before
+    // H-11 was fixed, expiry was anchored to construction time, so every message
+    // was born stale and this test passed for the wrong reason.)
     let messages = stream::iter([
+        // a1 arrives with no partner in sight...
         async { ("A", TestMessage::new(1000, "a1")) }.boxed(),
+        // ...and B only shows up after a1's 100ms staleness budget has elapsed.
         async {
-            sleep(Duration::from_millis(50)).await;
+            sleep(Duration::from_millis(300)).await;
             ("B", TestMessage::new(1050, "b1"))
         }
         .boxed(),
-        async {
-            sleep(Duration::from_millis(300)).await; // Long delay to cause staleness
-            ("A", TestMessage::new(1400, "a2"))
-        }
-        .boxed(),
+        // This pair arrives together and should sync normally.
+        async { ("A", TestMessage::new(1400, "a2")) }.boxed(),
         async {
             sleep(Duration::from_millis(10)).await;
             ("B", TestMessage::new(1450, "b2"))
@@ -475,17 +479,24 @@ async fn test_message_popped_before_matching() {
         groups.len()
     );
 
-    // If we have a group, it should contain the second pair
+    // If we have a group, the stale A must not be in it.
+    //
+    // H-11: this deliberately does not assert *which* B survives. b1 arrives
+    // 150ms in and is then only microseconds old, so it is not stale, and the
+    // 50ms window legitimately admits (a2=1250, b1=1200). Asserting b2 here only
+    // held while expiry was anchored to construction time and purged every
+    // message on sight. Which partner wins is the window's business, not
+    // staleness's -- what staleness owes us is that a1 is gone.
     if !groups.is_empty() {
         let group = &groups[0];
         assert_eq!(group.len(), 2, "Group should have both A and B");
 
         let a_msg = group.get("A").unwrap();
-        let b_msg = group.get("B").unwrap();
-
-        // Verify it's the second pair (not the first that was popped)
+        assert!(
+            !a_msg.data.contains("a1_will_be_popped"),
+            "the stale A message should have been expired, but it reached a group"
+        );
         assert!(a_msg.data.contains("a2_should_sync"));
-        assert!(b_msg.data.contains("b2_should_sync"));
     }
 }
 

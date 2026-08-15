@@ -128,6 +128,26 @@ where
     /// If window_size is None (infinite window), messages are matched
     /// without time-based dropping.
     pub fn try_match(&mut self) -> Option<IndexMap<K, T>> {
+        self.try_match_inner(true)
+    }
+
+    /// Match without waiting for the buffered spread to reach the window.
+    ///
+    /// [`Self::try_match`] holds a formable group back while
+    /// `inf_ts + window_size > sup_ts`, on the theory that more data might yield
+    /// a better pairing. That is only safe while the buffers can still grow.
+    /// When one is at capacity it cannot, so this variant emits the earliest
+    /// group that genuinely fits the window instead of waiting for data that
+    /// will never arrive (C-05).
+    ///
+    /// The emitted group is still window-valid: the loop drops everything older
+    /// than `inf_ts - window_size` before matching, so on exit every buffer front
+    /// lies within one window of `inf_ts`.
+    fn try_match_relaxed(&mut self) -> Option<IndexMap<K, T>> {
+        self.try_match_inner(false)
+    }
+
+    fn try_match_inner(&mut self, wait_for_spread: bool) -> Option<IndexMap<K, T>> {
         let inf_ts = loop {
             let (_, inf_ts) = self.inf_timestamp()?;
 
@@ -139,7 +159,7 @@ where
             // For finite window: check if spread is sufficient
             // For infinite window: skip this check (always ready if all buffers have data)
             if let Some(window_size) = self.window_size {
-                if !self.all_one() && inf_ts + window_size > sup_ts {
+                if wait_for_spread && !self.all_one() && inf_ts + window_size > sup_ts {
                     return None;
                 }
 
@@ -183,6 +203,62 @@ where
         self.space_notify.notify_waiters();
 
         Some(items)
+    }
+
+    /// Try to produce the next group, forcing progress when the state is stuck.
+    ///
+    /// H-12: this is the single place the pipeline's "match, or make progress"
+    /// rule lives. Both drivers -- the `sync()` poll loop and the C FFI's
+    /// `conflux_poll` -- go through it, so they cannot drift apart again.
+    ///
+    /// C-05: `try_match` alone deadlocks. It refuses to emit while
+    /// `!all_one() && inf_ts + window_size > sup_ts`, and once every buffer is
+    /// full of mutually unmatchable messages nothing ever drains them: under
+    /// `RejectNew` every later push is refused, and under `DropOldest` the
+    /// retained spread stays pinned at roughly one message period, which for the
+    /// realtime preset (50 ms window, buffer 2) is permanently under the window.
+    /// When the state is full and unmatchable we therefore drop the globally
+    /// oldest message and retry, exactly as `sync()`'s poll loop has always done.
+    ///
+    /// Returns `None` when no group can be formed and no progress is possible
+    /// (i.e. some buffer is still waiting for data).
+    pub fn advance(&mut self) -> Option<IndexMap<K, T>> {
+        loop {
+            if let Some(group) = self.try_match() {
+                return Some(group);
+            }
+
+            // Everything below only applies once a buffer is at capacity. While
+            // every buffer still has room, the next push may complete a better
+            // group, and acting early would discard usable data -- notably a slow
+            // stream's only message, which `drop_min` would take along with the
+            // fast stream's oldest entry.
+            if !self.any_full() {
+                return None;
+            }
+
+            // Never force progress while a stream has delivered nothing yet. No
+            // group can exist, so dropping could only destroy messages that are
+            // still waiting for their counterpart -- which is the normal state
+            // when one source runs ahead of another, or when an input delivers
+            // one stream at a time.
+            if self.is_empty() {
+                return None;
+            }
+
+            // A full buffer cannot accept another message, so waiting for a wider
+            // spread is futile. Emit the earliest group that actually fits the
+            // window, rather than holding out for a better one that cannot form.
+            if let Some(group) = self.try_match_relaxed() {
+                return Some(group);
+            }
+
+            // `drop_min` removes at least one message whenever any buffer holds
+            // one, so this loop strictly shrinks the state and terminates.
+            if !self.drop_min() {
+                return None;
+            }
+        }
     }
 
     /// Gets the minimum of the maximum timestamps from each buffer.
@@ -236,6 +312,17 @@ where
         self.buffers
             .values()
             .all(|buffer| buffer.len() >= self.buf_size)
+    }
+
+    /// Checks if *any* buffer has reached the limit.
+    ///
+    /// A buffer at capacity can accept no further messages, so its stream cannot
+    /// improve any future match. [`Self::advance`] uses this, rather than
+    /// [`Self::is_full`], to decide that waiting is futile (C-05).
+    pub fn any_full(&self) -> bool {
+        self.buffers
+            .values()
+            .any(|buffer| buffer.len() >= self.buf_size)
     }
 
     /// Checks if every buffer receives at least two messages.

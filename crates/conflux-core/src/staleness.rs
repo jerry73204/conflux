@@ -112,7 +112,6 @@ where
 {
     heap: BinaryHeap<StalenessEntry<K, T>>,
     config: StalenessConfig,
-    reference_time: Instant,
 }
 
 impl<K, T> ConstrainedHeap<K, T>
@@ -124,7 +123,6 @@ where
         Self {
             heap: BinaryHeap::with_capacity(config.heap_max_size),
             config,
-            reference_time: Instant::now(),
         }
     }
 
@@ -136,11 +134,18 @@ where
         message: T,
         staleness_timeout: Duration,
     ) -> Result<(), (K, T)> {
-        let expiration_time = self.reference_time + staleness_timeout;
+        // H-11: the deadline is measured from *now*, when the message is being
+        // tracked -- not from when the detector was constructed. Anchoring to
+        // construction made every message arriving later than `staleness_timeout`
+        // after startup born expired, which in a real run is all of them.
         let now = Instant::now();
+        let expiration_time = now + staleness_timeout;
 
-        // Check temporal constraint
-        if expiration_time.saturating_duration_since(now) > self.config.heap_time_horizon {
+        // Check temporal constraint: messages due beyond the heap's horizon are
+        // delegated to the timer wheel. `expiration_time` is now always in the
+        // future, so this comparison is meaningful (previously a past instant
+        // saturated to zero and always passed).
+        if staleness_timeout > self.config.heap_time_horizon {
             return Err((key, message));
         }
 

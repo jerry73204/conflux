@@ -4,7 +4,9 @@
 //! synchronization algorithm for use in C++ ROS2 nodes.
 
 use conflux_core::{
-    DropPolicy as CoreDropPolicy, WithTimestamp, buffer::Buffer, state::PushError, state::State,
+    DropPolicy as CoreDropPolicy, WithTimestamp,
+    buffer::Buffer,
+    state::{PushError, State},
 };
 use indexmap::IndexMap;
 use std::{
@@ -312,7 +314,11 @@ pub unsafe extern "C" fn conflux_poll(
 
         // Take the matched group under the lock, then release it before invoking
         // the (Python) callback, so the callback can never re-enter and deadlock.
-        let group_opt = sync.state.lock().unwrap().try_match();
+        //
+        // C-05/H-12: go through `State::advance`, not `try_match`. `advance` owns
+        // the shared "match, or force progress when full and unmatchable" rule, so
+        // the FFI can no longer wedge where the pure-Rust pipeline recovers.
+        let group_opt = sync.state.lock().unwrap().advance();
         match group_opt {
             Some(group) => {
                 if let Some(cb) = callback {
@@ -534,6 +540,86 @@ mod tests {
 
             conflux_synchronizer_free(sync);
         }
+    }
+
+    /// C-05: after the two streams diverge far enough that no group can be formed,
+    /// the buffers fill and `try_match` refuses to emit (spread < window, and
+    /// `all_one()` is false). The pure-Rust `sync()` pipeline escapes this via
+    /// `is_full -> drop_min`; the FFI must make the same forced progress, or the
+    /// synchronizer is wedged for the life of the process.
+    fn wedge_scenario(policy: ConfluxDropPolicy) -> (i32, i32) {
+        const MS: i64 = 1_000_000;
+
+        let config = ConfluxConfig {
+            window_size_ms: 50,
+            buffer_size: 2,
+            drop_policy: policy,
+        };
+
+        let key_a = std::ffi::CString::new("A").unwrap();
+        let key_b = std::ffi::CString::new("B").unwrap();
+        let keys = [key_a.as_ptr(), key_b.as_ptr()];
+
+        let sync = unsafe { conflux_synchronizer_new(&config, keys.as_ptr(), keys.len()) };
+        assert!(!sync.is_null());
+
+        let mut accepted = 0;
+        let mut groups = 0;
+
+        unsafe {
+            // Diverge the streams: no pair falls inside a common 50 ms window.
+            for ts in [1000, 1010] {
+                conflux_push_message(sync, key_a.as_ptr(), ts * MS, ptr::null_mut());
+            }
+            for ts in [5000, 5010] {
+                conflux_push_message(sync, key_b.as_ptr(), ts * MS, ptr::null_mut());
+            }
+
+            // Now feed perfectly aligned fresh data and drain after every pair.
+            for i in 0..20i64 {
+                let t = 6000 + i * 33;
+                if conflux_push_message(sync, key_a.as_ptr(), t * MS, ptr::null_mut())
+                    == ConfluxResult::Ok
+                {
+                    accepted += 1;
+                }
+                if conflux_push_message(sync, key_b.as_ptr(), (t + 5) * MS, ptr::null_mut())
+                    == ConfluxResult::Ok
+                {
+                    accepted += 1;
+                }
+                while conflux_poll(sync, None, ptr::null_mut()) == 1 {
+                    groups += 1;
+                }
+            }
+
+            conflux_synchronizer_free(sync);
+        }
+
+        (accepted, groups)
+    }
+
+    #[test]
+    fn test_recovers_from_divergence_reject_new() {
+        let (accepted, groups) = wedge_scenario(ConfluxDropPolicy::RejectNew);
+        assert!(
+            accepted > 0,
+            "RejectNew wedged: 0/40 fresh aligned pushes accepted after a divergence"
+        );
+        assert!(
+            groups > 0,
+            "RejectNew wedged: no group emitted from 20 aligned pairs after a divergence"
+        );
+    }
+
+    #[test]
+    fn test_recovers_from_divergence_drop_oldest() {
+        let (accepted, groups) = wedge_scenario(ConfluxDropPolicy::DropOldest);
+        assert_eq!(accepted, 40, "DropOldest should accept every fresh message");
+        assert!(
+            groups > 0,
+            "DropOldest wedged: all 40 pushes accepted but no group ever emitted"
+        );
     }
 
     #[test]
