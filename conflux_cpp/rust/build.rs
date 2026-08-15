@@ -18,11 +18,16 @@ fn main() {
 
     bindings.write_to_file(PathBuf::from(&out_dir).join("conflux_ffi.h"));
 
-    // Also write to a known location for the C++ build
+    // Also write to a known location for the C++ build.
+    //
+    // L-27: this lives in `generated/`, NOT in `include/`. A generated artifact inside the
+    // linted source tree has to be excluded from every linter by name, and that exclusion
+    // goes stale the moment the path changes. Keeping it out of the tree means there is
+    // nothing to exclude.
     let header_path = PathBuf::from(&crate_dir)
         .parent()
         .unwrap()
-        .join("include")
+        .join("generated")
         .join("conflux")
         .join("conflux_ffi.h");
 
