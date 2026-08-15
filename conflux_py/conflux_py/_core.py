@@ -3,6 +3,7 @@
 This module provides Python-friendly wrappers around the low-level FFI bindings.
 """
 
+import warnings
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
@@ -31,14 +32,43 @@ class SyncConfig:
 
     Attributes:
         window_size_ms: Time window in milliseconds for grouping messages.
-            Use None for infinite window (no time-based dropping).
-        buffer_size: Maximum number of messages to buffer per stream.
+            Use ``None`` -- not ``0`` -- for an infinite window.
+        buffer_size: Maximum number of messages to buffer per stream. Must be at
+            least 2.
         drop_policy: Policy for buffer overflow (DropPolicy.REJECT_NEW or DropPolicy.DROP_OLDEST).
     """
 
     window_size_ms: Optional[int] = 50
     buffer_size: int = 64
     drop_policy: DropPolicy = DropPolicy.REJECT_NEW
+
+    def __post_init__(self) -> None:
+        # L-20: `0` used to mean "infinite window", which is the opposite of how
+        # it reads -- zero is the natural spelling of "no tolerance at all". The
+        # C ABI still encodes infinite as 0 internally, but that is an encoding
+        # detail and must not surface here.
+        if self.window_size_ms is not None and self.window_size_ms <= 0:
+            raise ValueError(
+                f"window_size_ms must be positive, got {self.window_size_ms}. "
+                "For an infinite window (no time-based dropping) pass None; "
+                "0 is not a synonym for infinite."
+            )
+
+        # L-21: the floor exists because the matcher needs room to hold a second
+        # message per stream while deciding whether a better pairing is coming.
+        if self.buffer_size < 2:
+            raise ValueError(
+                f"buffer_size must be at least 2, got {self.buffer_size}. "
+                "The matcher needs room for a second message per stream to "
+                "compare candidate pairings."
+            )
+
+    @property
+    def window_description(self) -> str:
+        """Human-readable resolved window, for startup logging (L-20)."""
+        if self.window_size_ms is None:
+            return "infinite (no time-based dropping)"
+        return f"{self.window_size_ms} ms"
 
     @classmethod
     def offline(cls, buffer_size: int = 100) -> "SyncConfig":
@@ -272,9 +302,34 @@ class Synchronizer:
         """Check if all buffers have at least 2 messages."""
         return self._ffi_sync.is_ready()
 
+    def has_empty_buffer(self) -> bool:
+        """True when at least one topic has no buffered message.
+
+        No group can be formed while any stream is missing data, so this is the
+        predicate the matcher actually uses.
+        """
+        return self._ffi_sync.has_empty_buffer()
+
+    def all_buffers_empty(self) -> bool:
+        """True when every topic's buffer is empty -- the synchronizer is idle."""
+        return self._ffi_sync.all_buffers_empty()
+
     def is_empty(self) -> bool:
-        """Check if any buffer is empty."""
-        return self._ffi_sync.is_empty()
+        """Deprecated alias for :meth:`has_empty_buffer` (L-17).
+
+        The name reads as "the synchronizer holds nothing", but it reports
+        whether *any* buffer is empty -- the opposite guard in the multi-stream
+        case. Use :meth:`has_empty_buffer`, or :meth:`all_buffers_empty` for the
+        whole-state predicate.
+        """
+        warnings.warn(
+            "Synchronizer.is_empty() is ambiguous: it reports whether ANY buffer "
+            "is empty. Use has_empty_buffer(), or all_buffers_empty() for the "
+            "whole-state predicate.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.has_empty_buffer()
 
     def buffer_len(self, topic: str) -> int:
         """Get the buffer length for a specific topic."""

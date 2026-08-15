@@ -35,12 +35,20 @@ __all__ = [
     "Synchronizer",
 ]
 
-# Conditionally import ROS2Synchronizer and SyncStatistics if rclpy is available
+# The ROS2 wrapper is optional: it is only importable where rclpy is installed.
+#
+# L-19: probe for rclpy specifically rather than wrapping the real import in a
+# bare `except ImportError`. The broad form swallowed every ImportError raised
+# anywhere inside synchronizer.py -- a typo, a renamed symbol, a half-built
+# workspace -- and made ROS2Synchronizer silently vanish, so the user's node
+# failed later with a traceback naming conflux_py instead of the real cause.
 try:
+    import rclpy  # noqa: F401
+except ImportError:
+    pass
+else:
     from .synchronizer import ROS2Synchronizer, SyncStatistics  # noqa: F401
 
     __all__.extend(["ROS2Synchronizer", "SyncStatistics"])
-except ImportError:
-    pass
 
 __version__ = "0.2.0"

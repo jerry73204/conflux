@@ -116,13 +116,6 @@ where
     K: Key,
     T: WithTimestamp + Clone,
 {
-    // pub fn print_debug_info(&self) {
-    //     debug!("buffer sizes");
-    //     self.buffers.iter().for_each(|(device, buffer)| {
-    //         debug!("- {}:\t{}", device, buffer.buffer.len());
-    //     });
-    // }
-
     /// Generate a feedback message.
     pub fn update_feedback(&mut self) {
         let Some(feedback_tx) = &self.feedback_tx else {
@@ -136,28 +129,10 @@ where
             .map(|(key, _buffer)| key.clone())
             .collect();
 
-        // Request input sources to deliver messages with ts below thresh_ts
-        // let thresh_ts = self
-        //     .buffers
-        //     .values()
-        //     .filter_map(|buffer| buffer.last_ts())
-        //     .min();
-        // let include_thresh_ts = self.buffers.values().all(|buffer| buffer.buffer.is_empty());
-
         let msg = Feedback {
             accepted_keys,
-            // accepted_max_timestamp: thresh_ts.map(|ts| ts.as_nanos() as u64),
-            // inclusive: Some(include_thresh_ts),
-            accepted_max_timestamp: None,
             commit_timestamp: self.commit_ts,
         };
-
-        // if self.verbose_debug {
-        //     debug!("update feedback with accepted devices:");
-        //     accepted_devices.iter().for_each(|device| {
-        //         debug!("- {:?}", device);
-        //     });
-        // }
 
         if feedback_tx.send(msg).is_err() {
             self.feedback_tx = None;
@@ -188,7 +163,7 @@ where
     }
 
     fn try_match_inner(&mut self, wait_for_spread: bool) -> Option<IndexMap<K, T>> {
-        let inf_ts = loop {
+        let _inf_ts = loop {
             let (_, inf_ts) = self.inf_timestamp()?;
 
             // Checking all buffers have only one data left.
@@ -225,12 +200,12 @@ where
             .buffers
             .iter_mut()
             .map(|(key, buffer)| {
+                // L-23: an `assert!(item.timestamp() <= inf_ts + window)` used to
+                // live here. It cannot fire -- `inf_ts` is the maximum of all
+                // buffer fronts, so every popped front is <= inf_ts <= window_end
+                // by construction -- and a panic on this path would abort the ROS
+                // node, since it is reached through `extern "C"`.
                 let item = buffer.pop_front().unwrap();
-                // For finite window, verify message is within bounds
-                if let Some(window_size) = self.window_size {
-                    let window_end = inf_ts.saturating_add(window_size);
-                    assert!(item.timestamp() <= window_end);
-                }
                 (key.clone(), item)
             })
             .collect();
@@ -282,7 +257,7 @@ where
             // still waiting for their counterpart -- which is the normal state
             // when one source runs ahead of another, or when an input delivers
             // one stream at a time.
-            if self.is_empty() {
+            if self.has_empty_buffer() {
                 return None;
             }
 
@@ -443,19 +418,31 @@ where
         self.buffers.values().all(|buffer| buffer.len() >= 2)
     }
 
-    /// Checks if there are buffers which are empty.
+    /// Returns true when **at least one** buffer is empty.
+    ///
+    /// No group can be formed while any stream is missing data, so this is the
+    /// predicate the matcher actually needs.
+    ///
+    /// L-17: this was called `is_empty`, which reads as "the synchronizer holds
+    /// nothing" -- the opposite guard for the multi-stream case conflux exists to
+    /// handle. See [`Self::all_buffers_empty`] for the whole-state predicate.
+    pub fn has_empty_buffer(&self) -> bool {
+        self.buffers.values().any(|buffer| buffer.is_empty())
+    }
+
+    /// Returns true when **every** buffer is empty -- what the old `is_empty`
+    /// name suggested, and what a caller reaching for "is it idle?" wants.
+    pub fn all_buffers_empty(&self) -> bool {
+        self.buffers.values().all(|buffer| buffer.is_empty())
+    }
+
+    /// Deprecated alias for [`Self::has_empty_buffer`] (L-17).
+    #[deprecated(
+        since = "0.3.0",
+        note = "ambiguous name: this reports whether ANY buffer is empty. Use `has_empty_buffer`, or `all_buffers_empty` for the whole-state predicate."
+    )]
     pub fn is_empty(&self) -> bool {
-        // self.buffers.values().all(|buffer| buffer.is_empty())
-        let buffers = self.buffers.iter();
-        for item in buffers {
-            let (_key, buffer) = item;
-            if buffer.is_empty() {
-                return true;
-            } else {
-                continue;
-            }
-        }
-        false
+        self.has_empty_buffer()
     }
 
     /// Checks if all buffers have only one data left.
@@ -724,27 +711,27 @@ mod tests {
     }
 
     #[test]
-    fn test_state_is_empty_all_empty() {
+    fn test_state_has_empty_buffer_all_empty() {
         let state = create_test_state(4, 100);
-        assert!(state.is_empty());
+        assert!(state.has_empty_buffer());
     }
 
     #[test]
-    fn test_state_is_empty_some_have_data() {
+    fn test_state_has_empty_buffer_some_have_data() {
         let mut state = create_test_state(4, 100);
 
         state.push("A", create_message(1500)).unwrap();
-        assert!(state.is_empty()); // Returns true because buffer B is empty
+        assert!(state.has_empty_buffer()); // Returns true because buffer B is empty
     }
 
     #[test]
-    fn test_state_is_empty_none_empty() {
+    fn test_state_has_empty_buffer_none_empty() {
         let mut state = create_test_state(4, 100);
 
         state.push("A", create_message(1500)).unwrap();
         state.push("B", create_message(1500)).unwrap();
 
-        assert!(!state.is_empty());
+        assert!(!state.has_empty_buffer());
     }
 
     #[test]

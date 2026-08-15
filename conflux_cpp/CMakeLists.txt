@@ -130,6 +130,22 @@ ament_export_include_directories(include)
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  # L-22: the C++ wrapper had no test of any kind. These drive it through its
+  # real entry point (ROS subscriptions), so the shipped path is exercised.
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(geometry_msgs REQUIRED)
+
+  ament_add_gtest(test_${PROJECT_NAME} test/test_synchronizer.cpp)
+  if(TARGET test_${PROJECT_NAME})
+    target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME} ${RUST_LIB_PATH})
+    add_dependencies(test_${PROJECT_NAME} conflux_ffi_crate)
+    ament_target_dependencies(test_${PROJECT_NAME} rclcpp std_msgs geometry_msgs)
+    target_include_directories(test_${PROJECT_NAME} PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include
+      ${GENERATED_HEADER_DIR}
+    )
+  endif()
 endif()
 
 ament_package()

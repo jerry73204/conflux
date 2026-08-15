@@ -514,13 +514,47 @@ pub unsafe extern "C" fn conflux_is_ready(sync: *const ConfluxSynchronizer) -> b
 /// # Safety
 ///
 /// `sync` must be a valid pointer from `conflux_synchronizer_new`.
+///
+/// L-17: prefer `conflux_has_empty_buffer`. The name `is_empty` reads as "the
+/// synchronizer holds nothing", but it reports whether ANY buffer is empty.
+/// Retained so existing callers keep linking.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn conflux_is_empty(sync: *const ConfluxSynchronizer) -> bool {
     unsafe {
         if sync.is_null() {
             return true;
         }
-        (*sync).state.lock().unwrap().is_empty()
+        (*sync).state.lock().unwrap().has_empty_buffer()
+    }
+}
+
+/// Returns true when **at least one** buffer is empty, i.e. no group can form.
+///
+/// # Safety
+///
+/// `sync` must be a valid pointer from `conflux_synchronizer_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn conflux_has_empty_buffer(sync: *const ConfluxSynchronizer) -> bool {
+    unsafe {
+        if sync.is_null() {
+            return false;
+        }
+        (*sync).state.lock().unwrap().has_empty_buffer()
+    }
+}
+
+/// Returns true when **every** buffer is empty -- the synchronizer is idle.
+///
+/// # Safety
+///
+/// `sync` must be a valid pointer from `conflux_synchronizer_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn conflux_all_buffers_empty(sync: *const ConfluxSynchronizer) -> bool {
+    unsafe {
+        if sync.is_null() {
+            return true;
+        }
+        (*sync).state.lock().unwrap().all_buffers_empty()
     }
 }
 

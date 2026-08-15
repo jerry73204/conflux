@@ -60,7 +60,7 @@ just test               # Run all tests (Rust, C++, Python)
 just test-rust          # Run Rust tests (workspace + FFI)
 just test-core          # Run conflux-core tests only
 just test-ffi           # Run conflux-ffi tests only
-just test-python        # Run Python tests with colcon
+just test-python        # Run Python tests (pytest, direct)
 
 # ==== Formatting ====
 just format             # Format all code (Rust, C++, Python)
@@ -97,8 +97,9 @@ conflux/
 │   ├── conflux-core/             # Core sync algorithm (pure Rust)
 │   │   ├── src/
 │   │   │   ├── lib.rs            # Public API, sync() function
-│   │   │   ├── state.rs          # Core state machine
+│   │   │   ├── state.rs          # Core state machine (advance, match_status, reset)
 │   │   │   ├── buffer.rs         # Per-stream message buffering
+│   │   │   ├── config.rs         # Config, DropPolicy
 │   │   │   └── types.rs          # WithTimestamp trait, Key trait
 │   │   └── tests/                # Integration tests
 │   │
@@ -338,7 +339,32 @@ Statistics are logged on Ctrl+C shutdown:
 [INFO]   calibration_board_detections: received=400, rejected=0, rejection_rate=0.0%
 ```
 
+## Known Issues
+
+**A test recipe that cannot fail is worse than no recipe.** Two of them shipped
+that way and hid real breakage for an unknown period:
+
+- `just test-rust` ran `cargo test --workspace` without the feature that gated
+  the staleness suite, so 20 tests compiled to nothing while the suite reported
+  green -- and they had in fact stopped compiling after a `Config` API change.
+- `just test-python` ran the tests through `colcon test`, which invokes
+  `setup.py test` (unittest) for ament_python packages. These are pytest-style
+  tests, so unittest collected 0 of them and exited 0.
+- `just test-cpp` echoed two lines and exited 0 while `conflux_cpp` -- which
+  builds the library every LCTK solver loads -- had no tests at all.
+
+All three are fixed. When adding a test recipe, break an assertion deliberately
+and confirm a non-zero exit before trusting it.
+
+Note: `just test-cpp` is scoped to the gtest target. The ament_lint tests
+(copyright, cpplint, uncrustify) are red on pre-existing sources; run them with
+`just colcon-test`.
+
 ## Testing
+
+`just test` runs all four suites and fails if any of them regresses. Each recipe
+propagates its exit code -- verify that before trusting a new one, since two
+suites once reported success while running nothing at all (see Known Issues).
 
 ```bash
 # Core library tests (no ROS2 required)
@@ -347,7 +373,10 @@ just test-core
 # All Rust tests (core + FFI)
 just test-rust
 
-# Python tests (requires FFI library built)
+# C++ unit tests (gtest, via colcon)
+just test-cpp
+
+# Python tests (pytest; requires FFI library built)
 just test-python
 
 # Launch file tests

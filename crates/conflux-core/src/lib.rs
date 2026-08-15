@@ -59,7 +59,6 @@ mod config;
 pub mod state;
 mod sync;
 mod types;
-mod utils;
 
 pub use config::{Config, DropPolicy};
 pub use state::{BlockedReason, MatchStatus, PushError};

@@ -27,7 +27,6 @@ pub struct Feedback<K>
 where
     K: Key,
 {
-    pub accepted_max_timestamp: Option<Duration>,
     pub commit_timestamp: Option<Duration>,
     pub accepted_keys: Vec<K>,
 }

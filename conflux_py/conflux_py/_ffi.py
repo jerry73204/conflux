@@ -217,6 +217,12 @@ if _lib_path:
         _lib.conflux_is_ready.argtypes = [c_void_p]
         _lib.conflux_is_ready.restype = c_bool
 
+        _lib.conflux_has_empty_buffer.argtypes = [c_void_p]
+        _lib.conflux_has_empty_buffer.restype = c_bool
+
+        _lib.conflux_all_buffers_empty.argtypes = [c_void_p]
+        _lib.conflux_all_buffers_empty.restype = c_bool
+
         _lib.conflux_is_empty.argtypes = [c_void_p]
         _lib.conflux_is_empty.restype = c_bool
 
@@ -437,6 +443,18 @@ class FFISynchronizer:
         if not self._handle:
             return False
         return _lib.conflux_is_ready(self._handle)
+
+    def has_empty_buffer(self) -> bool:
+        """True when at least one buffer is empty, i.e. no group can form."""
+        if not self._handle:
+            return True
+        return _lib.conflux_has_empty_buffer(self._handle)
+
+    def all_buffers_empty(self) -> bool:
+        """True when every buffer is empty -- the synchronizer is idle."""
+        if not self._handle:
+            return True
+        return _lib.conflux_all_buffers_empty(self._handle)
 
     def is_empty(self) -> bool:
         """Check if any buffer is empty."""

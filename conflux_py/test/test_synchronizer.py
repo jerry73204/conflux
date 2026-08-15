@@ -60,12 +60,23 @@ class TestSynchronizer:
             Synchronizer([])
 
     def test_create_synchronizer_invalid_buffer_size(self):
-        """Test that buffer_size < 2 raises error."""
-        from conflux_py import SyncConfig, Synchronizer
+        """buffer_size < 2 is rejected, now at config construction (L-21).
 
-        config = SyncConfig(buffer_size=1)
+        SyncConfig validates eagerly, so the error surfaces at the point the bad
+        value was written rather than later at Synchronizer(). FFISynchronizer
+        keeps its own check for callers that bypass SyncConfig.
+        """
+        from conflux_py import SyncConfig
+
         with pytest.raises(ValueError, match="buffer_size"):
-            Synchronizer(["topic1"], config)
+            SyncConfig(buffer_size=1)
+
+    def test_ffi_layer_also_rejects_invalid_buffer_size(self):
+        """The low-level layer validates independently of SyncConfig."""
+        from conflux_py._ffi import FFISynchronizer
+
+        with pytest.raises(ValueError, match="buffer_size"):
+            FFISynchronizer(["topic1"], buffer_size=1)
 
     def test_push_valid_message(self):
         """Test pushing a valid message."""
@@ -207,22 +218,22 @@ class TestSynchronizer:
         sync.push("topic2", 1_100_000_000, {"data": "msg4"})
         assert sync.is_ready() is True
 
-    def test_is_empty(self):
-        """Test is_empty method."""
+    def test_has_empty_buffer(self):
+        """has_empty_buffer reports whether ANY topic is missing data (L-17)."""
         from conflux_py import Synchronizer
 
         sync = Synchronizer(["topic1", "topic2"])
 
-        # Initially empty
-        assert sync.is_empty() is True
+        # Initially every buffer is empty
+        assert sync.has_empty_buffer() is True
 
-        # Still empty if only one topic has messages
+        # Still true if only one topic has messages -- no group can form
         sync.push("topic1", 1_000_000_000, {"data": "msg1"})
-        assert sync.is_empty() is True
+        assert sync.has_empty_buffer() is True
 
-        # Not empty when all topics have messages
+        # False once all topics have messages
         sync.push("topic2", 1_000_000_000, {"data": "msg2"})
-        assert sync.is_empty() is False
+        assert sync.has_empty_buffer() is False
 
     def test_buffer_len(self):
         """Test buffer_len method."""
@@ -349,3 +360,54 @@ class TestStatus:
         sync.push("B", 1005 * ms, "b")
 
         assert sync.status.blocked is None
+
+
+class TestNamingAndValidation:
+    """L-17, L-19, L-20, L-21: the API should say what it means."""
+
+    def test_has_empty_buffer_says_what_it_means(self):
+        from conflux_py import Synchronizer
+
+        sync = Synchronizer(["A", "B"])
+        assert sync.has_empty_buffer() is True
+
+        sync.push("A", 1_000_000_000, "a")
+        assert sync.has_empty_buffer() is True, "B is still empty"
+        assert sync.all_buffers_empty() is False, "A holds a message"
+
+        sync.push("B", 1_005_000_000, "b")
+        assert sync.has_empty_buffer() is False
+
+    def test_is_empty_alias_still_works(self):
+        from conflux_py import Synchronizer
+
+        sync = Synchronizer(["A", "B"])
+        sync.push("A", 1_000_000_000, "a")
+        with pytest.warns(DeprecationWarning, match="has_empty_buffer"):
+            assert sync.is_empty() == sync.has_empty_buffer()
+
+    def test_zero_window_rejected_with_a_pointer_to_none(self):
+        from conflux_py import SyncConfig
+
+        with pytest.raises(ValueError, match="None"):
+            SyncConfig(window_size_ms=0)
+
+    def test_none_window_means_infinite(self):
+        from conflux_py import SyncConfig, Synchronizer
+
+        config = SyncConfig(window_size_ms=None)
+        assert config.window_size_ms is None
+        # An infinite window must still construct and match.
+        sync = Synchronizer(["A", "B"], config)
+        sync.push("A", 1_000_000_000, "a")
+        sync.push("B", 9_000_000_000, "b")
+        assert sync.poll() is not None, "infinite window matches any spread"
+
+    def test_buffer_size_error_explains_the_floor(self):
+        from conflux_py import SyncConfig, Synchronizer
+
+        with pytest.raises(ValueError) as exc:
+            Synchronizer(["A"], SyncConfig(buffer_size=1))
+        message = str(exc.value)
+        assert "buffer_size" in message
+        assert "2" in message

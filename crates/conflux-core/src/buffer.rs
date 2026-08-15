@@ -56,25 +56,6 @@ where
         })
     }
 
-    // pub fn back_entry(&mut self) -> Option<BackEntry<'_, T>> {
-    //     let item = self.buffer.pop_back()?;
-    //     Some(BackEntry {
-    //         buffer: self,
-    //         item: Some(item),
-    //     })
-    // }
-
-    // pub fn pop_back(&mut self) -> Option<T> {
-    //     self.buffer.pop_back()
-    // }
-
-    // pub fn front_ts(&self) -> Option<Duration> {
-    //     self.buffer
-    //         .front()
-    //         .map(|item| item.timestamp())
-    //         .or(self.last_ts)
-    // }
-
     /// Timestamp of the most recently accepted message (monotonic high-water
     /// mark). A push with a timestamp <= this is rejected as out-of-order.
     pub fn last_ts(&self) -> Option<Duration> {
@@ -195,14 +176,6 @@ where
         }
     }
 }
-
-// pub struct BackEntry<'a, T>
-// where
-//     T: WithTimestamp,
-// {
-//     buffer: &'a mut Buffer<T>,
-//     item: Option<T>,
-// }
 
 // impl<'a, T> BackEntry<'a, T>
 // where

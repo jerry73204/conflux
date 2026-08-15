@@ -36,8 +36,6 @@ where
     S: Stream<Item = Result<(K, T)>> + Unpin + Send + 'a,
     I: IntoIterator<Item = K>,
 {
-    // let keys: Vec<_> = keys.into_iter().collect();
-
     let Config {
         window_size,
         start_time,
@@ -45,11 +43,24 @@ where
         drop_policy,
     } = config;
 
-    // Sanity check
-    ensure!(buf_size >= 2);
-    // Window size must be positive if specified (None means infinite)
+    // L-21: state the constraint and the reason. The floor is 2 because the
+    // matcher needs room to hold a second message per stream while deciding
+    // whether a better pairing is still coming.
+    ensure!(
+        buf_size >= 2,
+        "buf_size must be at least 2, got {buf_size}: the matcher needs room for \
+         a second message per stream to compare candidate pairings"
+    );
+
+    // L-20: `None` means an infinite window. Zero is not a synonym for it -- zero
+    // is the natural spelling of "no tolerance at all" -- so reject it explicitly
+    // rather than let it read as a tightening that silently disables windowing.
     if let Some(ws) = window_size {
-        ensure!(ws > Duration::ZERO);
+        ensure!(
+            ws > Duration::ZERO,
+            "window_size must be positive; pass None for an infinite window \
+             (no time-based dropping) rather than zero"
+        );
     }
 
     // Initialize buffers for respective keys.
@@ -61,12 +72,10 @@ where
         })
         .collect();
     ensure!(!buffers.is_empty());
-    // println!("the buffer is shown as below \n {buffers:#?}");
 
     // Create the queue that pipes generated feedback messages.
     let (feedback_tx, feedback_rx) = {
         let init_feedback = Feedback {
-            accepted_max_timestamp: None,
             commit_timestamp: None,
             accepted_keys: buffers.keys().cloned().collect(),
         };
@@ -104,8 +113,8 @@ where
     T: WithTimestamp + Clone,
 {
     loop {
-        // `is_empty` is true when *any* buffer is empty: no group can be formed.
-        if state.is_empty() {
+        // No group can be formed while any stream is missing data.
+        if state.has_empty_buffer() {
             return None;
         }
         if let Some(matching) = state.advance() {

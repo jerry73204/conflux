@@ -85,10 +85,17 @@ test-rust-nextest:
     cargo nextest run --workspace --no-fail-fast
     cd conflux_cpp/rust && cargo nextest run --no-fail-fast
 
-# Run C++ tests (currently no unit tests, only lint checks available)
+# Run C++ unit tests (gtest)
+# L-22: this recipe used to echo two lines and exit 0, so `just test` reported a
+# passing C++ suite that did not exist. It now runs the real gtest target and
+# propagates failures.
+#
+# Scoped to the gtest target with -R: the ament_lint tests (copyright, cpplint,
+# uncrustify) are red on pre-existing sources and are `just lint`/`just check`'s
+# business, not this recipe's. Run them with `just colcon-test`.
 test-cpp:
-    @echo "C++ unit tests: none defined yet"
-    @echo "Run 'just colcon-test' for ament_lint style checks"
+    colcon test --packages-select conflux_cpp --event-handlers console_direct+ \
+        --return-code-on-test-failure --ctest-args -R test_conflux_cpp
 
 # Run Python tests
 # NOTE: pytest is invoked directly rather than via `colcon test`. colcon runs

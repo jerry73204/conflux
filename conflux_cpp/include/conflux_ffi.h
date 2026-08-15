@@ -6,7 +6,6 @@
  * License: MIT OR Apache-2.0
  */
 
-
 #ifndef CONFLUX_FFI_H
 #define CONFLUX_FFI_H
 
@@ -23,82 +22,82 @@
  * Policy for handling buffer overflow when pushing new messages.
  */
 typedef enum ConfluxDropPolicy {
-  /**
-   * Reject new messages when buffer is full.
-   * Preserves existing data. Suitable for offline/rosbag processing.
-   */
-  ConfluxDropPolicy_RejectNew = 0,
-  /**
-   * Drop the oldest message to make room for the new one.
-   * Always accepts new data. Suitable for realtime processing.
-   */
-  ConfluxDropPolicy_DropOldest = 1,
+    /**
+     * Reject new messages when buffer is full.
+     * Preserves existing data. Suitable for offline/rosbag processing.
+     */
+    ConfluxDropPolicy_RejectNew = 0,
+    /**
+     * Drop the oldest message to make room for the new one.
+     * Always accepts new data. Suitable for realtime processing.
+     */
+    ConfluxDropPolicy_DropOldest = 1,
 } ConfluxDropPolicy;
 
 /**
  * Result codes for FFI operations.
  */
 typedef enum ConfluxResult {
-  /**
-   * Operation succeeded.
-   */
-  ConfluxResult_Ok = 0,
-  /**
-   * Invalid argument provided.
-   */
-  ConfluxResult_InvalidArgument = 1,
-  /**
-   * Buffer is full, message rejected.
-   */
-  ConfluxResult_BufferFull = 2,
-  /**
-   * Key not found.
-   */
-  ConfluxResult_KeyNotFound = 3,
-  /**
-   * Null pointer provided.
-   */
-  ConfluxResult_NullPointer = 4,
-  /**
-   * Internal error.
-   */
-  ConfluxResult_InternalError = 5,
-  /**
-   * Message rejected: timestamp is before the commit time (arrived too late).
-   */
-  ConfluxResult_LateMessage = 6,
-  /**
-   * Message rejected: timestamp is not monotonically increasing.
-   */
-  ConfluxResult_OutOfOrder = 7,
-  /**
-   * Timed out waiting for buffer space (blocking push only).
-   */
-  ConfluxResult_Timeout = 8,
+    /**
+     * Operation succeeded.
+     */
+    ConfluxResult_Ok = 0,
+    /**
+     * Invalid argument provided.
+     */
+    ConfluxResult_InvalidArgument = 1,
+    /**
+     * Buffer is full, message rejected.
+     */
+    ConfluxResult_BufferFull = 2,
+    /**
+     * Key not found.
+     */
+    ConfluxResult_KeyNotFound = 3,
+    /**
+     * Null pointer provided.
+     */
+    ConfluxResult_NullPointer = 4,
+    /**
+     * Internal error.
+     */
+    ConfluxResult_InternalError = 5,
+    /**
+     * Message rejected: timestamp is before the commit time (arrived too late).
+     */
+    ConfluxResult_LateMessage = 6,
+    /**
+     * Message rejected: timestamp is not monotonically increasing.
+     */
+    ConfluxResult_OutOfOrder = 7,
+    /**
+     * Timed out waiting for buffer space (blocking push only).
+     */
+    ConfluxResult_Timeout = 8,
 } ConfluxResult;
 
 /**
  * Why the matcher is not currently emitting, mirroring `conflux_core::BlockedReason`.
  */
 typedef enum ConfluxBlockedReason {
-  /**
-   * A group is available right now -- nothing is blocked.
-   */
-  ConfluxBlockedReason_NotBlocked = 0,
-  /**
-   * At least one stream has delivered nothing yet.
-   */
-  ConfluxBlockedReason_WaitingForData = 1,
-  /**
-   * All streams have data, but everything sits inside a band narrower than
-   * the window, so the matcher is holding out for a better pairing.
-   */
-  ConfluxBlockedReason_SpreadTooNarrow = 2,
-  /**
-   * A buffer is at capacity and no group fits the window. Does not resolve on
-   * its own; `conflux_poll` forces progress out of it (C-05).
-   */
-  ConfluxBlockedReason_BufferFullNoMatch = 3,
+    /**
+     * A group is available right now -- nothing is blocked.
+     */
+    ConfluxBlockedReason_NotBlocked = 0,
+    /**
+     * At least one stream has delivered nothing yet.
+     */
+    ConfluxBlockedReason_WaitingForData = 1,
+    /**
+     * All streams have data, but everything sits inside a band narrower than
+     * the window, so the matcher is holding out for a better pairing.
+     */
+    ConfluxBlockedReason_SpreadTooNarrow = 2,
+    /**
+     * A buffer is at capacity and no group fits the window. Does not resolve on
+     * its own; `conflux_poll` forces progress out of it (C-05).
+     */
+    ConfluxBlockedReason_BufferFullNoMatch = 3,
 } ConfluxBlockedReason;
 
 /**
@@ -113,19 +112,19 @@ typedef struct ConfluxSynchronizer ConfluxSynchronizer;
  * Configuration for creating a synchronizer.
  */
 typedef struct ConfluxConfig {
-  /**
-   * Time window in milliseconds for grouping messages.
-   * Use 0 for infinite window (no time-based dropping).
-   */
-  uint64_t window_size_ms;
-  /**
-   * Maximum number of messages to buffer per stream.
-   */
-  uintptr_t buffer_size;
-  /**
-   * Policy for handling buffer overflow.
-   */
-  enum ConfluxDropPolicy drop_policy;
+    /**
+     * Time window in milliseconds for grouping messages.
+     * Use 0 for infinite window (no time-based dropping).
+     */
+    uint64_t window_size_ms;
+    /**
+     * Maximum number of messages to buffer per stream.
+     */
+    uintptr_t buffer_size;
+    /**
+     * Policy for handling buffer overflow.
+     */
+    enum ConfluxDropPolicy drop_policy;
 } ConfluxConfig;
 
 /**
@@ -135,31 +134,31 @@ typedef struct ConfluxConfig {
  * buffer is empty, or the window is infinite so nothing is being waited for).
  */
 typedef struct ConfluxStatus {
-  /**
-   * Greatest of the per-stream oldest timestamps, or -1.
-   */
-  int64_t inf_ts_ns;
-  /**
-   * Least of the per-stream newest timestamps, or -1.
-   */
-  int64_t sup_ts_ns;
-  /**
-   * `sup_ts - inf_ts`, or -1.
-   */
-  int64_t spread_ns;
-  /**
-   * Additional spread needed before the matcher stops waiting, or -1.
-   */
-  int64_t shortfall_ns;
-  /**
-   * Why no group is available.
-   */
-  enum ConfluxBlockedReason blocked;
+    /**
+     * Greatest of the per-stream oldest timestamps, or -1.
+     */
+    int64_t inf_ts_ns;
+    /**
+     * Least of the per-stream newest timestamps, or -1.
+     */
+    int64_t sup_ts_ns;
+    /**
+     * `sup_ts - inf_ts`, or -1.
+     */
+    int64_t spread_ns;
+    /**
+     * Additional spread needed before the matcher stops waiting, or -1.
+     */
+    int64_t shortfall_ns;
+    /**
+     * Why no group is available.
+     */
+    enum ConfluxBlockedReason blocked;
 } ConfluxStatus;
 
 #ifdef __cplusplus
 extern "C" {
-#endif // __cplusplus
+#endif  // __cplusplus
 
 /**
  * Create a new synchronizer with the given configuration and keys.
@@ -170,9 +169,8 @@ extern "C" {
  * - Returns a pointer to a new synchronizer instance. The caller is responsible
  *   for freeing this with `conflux_synchronizer_free`.
  */
-struct ConfluxSynchronizer *conflux_synchronizer_new(const struct ConfluxConfig *config,
-                                                     const char *const *keys,
-                                                     uintptr_t key_count);
+struct ConfluxSynchronizer* conflux_synchronizer_new(const struct ConfluxConfig* config,
+                                                     const char* const* keys, uintptr_t key_count);
 
 /**
  * Free a synchronizer instance.
@@ -182,7 +180,7 @@ struct ConfluxSynchronizer *conflux_synchronizer_new(const struct ConfluxConfig 
  * The pointer must have been returned by `conflux_synchronizer_new` and must
  * not be used after this call.
  */
-void conflux_synchronizer_free(struct ConfluxSynchronizer *sync);
+void conflux_synchronizer_free(struct ConfluxSynchronizer* sync);
 
 /**
  * Read the matcher's current status.
@@ -196,8 +194,8 @@ void conflux_synchronizer_free(struct ConfluxSynchronizer *sync);
  * - `sync` must be a valid pointer from `conflux_synchronizer_new`.
  * - `out` must point to a writable `ConfluxStatus`.
  */
-enum ConfluxResult conflux_get_status(const struct ConfluxSynchronizer *sync,
-                                      struct ConfluxStatus *out);
+enum ConfluxResult conflux_get_status(const struct ConfluxSynchronizer* sync,
+                                      struct ConfluxStatus* out);
 
 /**
  * Discard all buffered messages and forget all timestamp history.
@@ -216,7 +214,7 @@ enum ConfluxResult conflux_get_status(const struct ConfluxSynchronizer *sync,
  *
  * `sync` must be a valid pointer from `conflux_synchronizer_new`.
  */
-void conflux_synchronizer_reset(struct ConfluxSynchronizer *sync);
+void conflux_synchronizer_reset(struct ConfluxSynchronizer* sync);
 
 /**
  * Push a message to the synchronizer.
@@ -233,10 +231,8 @@ void conflux_synchronizer_reset(struct ConfluxSynchronizer *sync);
  * - `ConfluxResult::BufferFull` if the buffer for this key is full.
  * - `ConfluxResult::KeyNotFound` if the key was not provided at creation.
  */
-enum ConfluxResult conflux_push_message(struct ConfluxSynchronizer *sync,
-                                        const char *key,
-                                        int64_t timestamp_ns,
-                                        void *user_data);
+enum ConfluxResult conflux_push_message(struct ConfluxSynchronizer* sync, const char* key,
+                                        int64_t timestamp_ns, void* user_data);
 
 /**
  * Poll for a synchronized group of messages.
@@ -264,12 +260,10 @@ enum ConfluxResult conflux_push_message(struct ConfluxSynchronizer *sync,
  * - 0 if no synchronized group is available.
  * - -1 on error.
  */
-int32_t conflux_poll(struct ConfluxSynchronizer *sync,
-                     void (*callback)(const char *key,
-                                      int64_t timestamp_ns,
-                                      void *user_data,
-                                      void *context),
-                     void *context);
+int32_t conflux_poll(struct ConfluxSynchronizer* sync,
+                     void (*callback)(const char* key, int64_t timestamp_ns, void* user_data,
+                                      void* context),
+                     void* context);
 
 /**
  * Invoke `callback` once for every message currently held in a buffer, passing
@@ -285,9 +279,8 @@ int32_t conflux_poll(struct ConfluxSynchronizer *sync,
  *
  * `sync` must be a valid pointer from `conflux_synchronizer_new`.
  */
-void conflux_for_each_live(const struct ConfluxSynchronizer *sync,
-                           void (*callback)(void *user_data, void *context),
-                           void *context);
+void conflux_for_each_live(const struct ConfluxSynchronizer* sync,
+                           void (*callback)(void* user_data, void* context), void* context);
 
 /**
  * Get the number of keys registered with the synchronizer.
@@ -296,7 +289,7 @@ void conflux_for_each_live(const struct ConfluxSynchronizer *sync,
  *
  * `sync` must be a valid pointer from `conflux_synchronizer_new`.
  */
-uintptr_t conflux_key_count(const struct ConfluxSynchronizer *sync);
+uintptr_t conflux_key_count(const struct ConfluxSynchronizer* sync);
 
 /**
  * Check if the synchronizer is ready (all buffers have at least 2 messages).
@@ -305,7 +298,7 @@ uintptr_t conflux_key_count(const struct ConfluxSynchronizer *sync);
  *
  * `sync` must be a valid pointer from `conflux_synchronizer_new`.
  */
-bool conflux_is_ready(const struct ConfluxSynchronizer *sync);
+bool conflux_is_ready(const struct ConfluxSynchronizer* sync);
 
 /**
  * Check if the synchronizer is empty (any buffer is empty).
@@ -313,8 +306,30 @@ bool conflux_is_ready(const struct ConfluxSynchronizer *sync);
  * # Safety
  *
  * `sync` must be a valid pointer from `conflux_synchronizer_new`.
+ *
+ * L-17: prefer `conflux_has_empty_buffer`. The name `is_empty` reads as "the
+ * synchronizer holds nothing", but it reports whether ANY buffer is empty.
+ * Retained so existing callers keep linking.
  */
-bool conflux_is_empty(const struct ConfluxSynchronizer *sync);
+bool conflux_is_empty(const struct ConfluxSynchronizer* sync);
+
+/**
+ * Returns true when **at least one** buffer is empty, i.e. no group can form.
+ *
+ * # Safety
+ *
+ * `sync` must be a valid pointer from `conflux_synchronizer_new`.
+ */
+bool conflux_has_empty_buffer(const struct ConfluxSynchronizer* sync);
+
+/**
+ * Returns true when **every** buffer is empty -- the synchronizer is idle.
+ *
+ * # Safety
+ *
+ * `sync` must be a valid pointer from `conflux_synchronizer_new`.
+ */
+bool conflux_all_buffers_empty(const struct ConfluxSynchronizer* sync);
 
 /**
  * Get the buffer size for a specific key.
@@ -328,10 +343,10 @@ bool conflux_is_empty(const struct ConfluxSynchronizer *sync);
  *
  * The number of messages in the buffer, or 0 if the key is not found.
  */
-uintptr_t conflux_buffer_len(const struct ConfluxSynchronizer *sync, const char *key);
+uintptr_t conflux_buffer_len(const struct ConfluxSynchronizer* sync, const char* key);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  /* CONFLUX_FFI_H */
+#endif /* CONFLUX_FFI_H */
