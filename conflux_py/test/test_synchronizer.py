@@ -277,3 +277,75 @@ class TestSynchronizer:
             count += 1
 
         assert count >= 1
+
+
+class TestReset:
+    """M-22: recovery from a source clock restart (bag loop, sim-time reset)."""
+
+    def test_reset_revives_stream_after_clock_jump(self):
+        from conflux_py import Synchronizer, SyncConfig
+
+        sync = Synchronizer(["A", "B"], SyncConfig(window_size_ms=50, buffer_size=8))
+        ms = 1_000_000
+
+        sync.push("A", 5000 * ms, "a1")
+        sync.push("B", 5010 * ms, "b1")
+        assert sync.poll() is not None
+
+        # Source restarts its clock: every push is refused from here on.
+        assert sync.push("A", 1000 * ms, "a2") is False
+
+        sync.reset()
+
+        assert sync.push("A", 1000 * ms, "a2") is True
+        assert sync.push("B", 1010 * ms, "b2") is True
+        assert sync.poll() is not None
+
+    def test_reset_clears_buffers(self):
+        from conflux_py import Synchronizer, SyncConfig
+
+        sync = Synchronizer(["A", "B"], SyncConfig(window_size_ms=50, buffer_size=8))
+        sync.push("A", 1_000_000_000, "a1")
+        assert sync.buffer_len("A") == 1
+
+        sync.reset()
+
+        assert sync.buffer_len("A") == 0
+
+
+class TestStatus:
+    """M-23: the matcher must be able to explain why it is not emitting."""
+
+    def test_status_waiting_for_data(self):
+        from conflux_py import BlockedReason, Synchronizer, SyncConfig
+
+        sync = Synchronizer(["A", "B"], SyncConfig(window_size_ms=50, buffer_size=8))
+        status = sync.status
+        assert status.blocked is BlockedReason.WAITING_FOR_DATA
+        assert status.inf_ts_ns is None
+        assert status.is_stalled is False
+
+    def test_status_reports_wedge_shape(self):
+        from conflux_py import BlockedReason, Synchronizer, SyncConfig
+
+        ms = 1_000_000
+        sync = Synchronizer(["A", "B"], SyncConfig(window_size_ms=50, buffer_size=2))
+        for ts in (1000, 1010):
+            sync.push("A", ts * ms, f"a{ts}")
+        for ts in (5000, 5010):
+            sync.push("B", ts * ms, f"b{ts}")
+
+        status = sync.status
+        assert status.blocked is BlockedReason.BUFFER_FULL_NO_MATCH
+        assert status.shortfall_ns is not None and status.shortfall_ns > 0
+        assert status.is_stalled is True
+
+    def test_status_not_blocked_when_group_available(self):
+        from conflux_py import Synchronizer, SyncConfig
+
+        ms = 1_000_000
+        sync = Synchronizer(["A", "B"], SyncConfig(window_size_ms=50, buffer_size=8))
+        sync.push("A", 1000 * ms, "a")
+        sync.push("B", 1005 * ms, "b")
+
+        assert sync.status.blocked is None

@@ -5,6 +5,7 @@ that integrates directly with rclpy for easy use in ROS2 nodes.
 """
 
 from dataclasses import dataclass, field
+import time
 from typing import Callable, Dict, List, Optional, Type, TypeVar
 
 from rclpy.node import Node
@@ -97,6 +98,7 @@ class ROS2Synchronizer:
         qos: Optional[QoSProfile] = None,
         log_overflow: bool = True,
         log_overflow_interval: float = 5.0,
+        stall_warn_after: float = 10.0,
     ):
         """Initialize the ROS2 synchronizer.
 
@@ -122,6 +124,10 @@ class ROS2Synchronizer:
         self._log_overflow = log_overflow
         self._log_overflow_interval = log_overflow_interval
         self._last_overflow_log_time: Dict[str, float] = {}
+        # M-23: stall detection state.
+        self._stall_warn_after = stall_warn_after
+        self._last_group_time = time.time()
+        self._stall_warned = False
 
         if qos is None:
             self._qos = QoSProfile(
@@ -203,9 +209,61 @@ class ROS2Synchronizer:
         if self._sync is None or self._callback is None:
             return
 
+        emitted = False
         for group in self._sync:
             self._stats.groups_synchronized += 1
+            emitted = True
             self._callback(group)
+
+        self._check_for_stall(emitted)
+
+    def _check_for_stall(self, emitted: bool) -> None:
+        """Warn when messages are flowing in but no group is coming out (M-23).
+
+        The push/poll counters cannot surface this on their own: a synchronizer
+        wedged under DropOldest accepts every message and reports zero
+        rejections while emitting nothing at all. Asking the matcher directly is
+        the only way to tell that apart from a normal wait.
+        """
+        if self._stall_warn_after <= 0 or self._sync is None:
+            return
+
+        import time
+
+        now = time.time()
+
+        if emitted:
+            self._last_group_time = now
+            self._stall_warned = False
+            return
+
+        # Only meaningful once every topic has delivered something; before that,
+        # waiting is simply startup.
+        if not all(self._stats.messages_received.get(t, 0) > 0 for t in self._topics):
+            return
+
+        if now - self._last_group_time < self._stall_warn_after:
+            return
+
+        status = self._sync.status
+        if not status.is_stalled or self._stall_warned:
+            return
+
+        self._stall_warned = True
+        buffers = ", ".join(f"{t}={self._sync.buffer_len(t)}" for t in self._topics)
+        shortfall_ms = (
+            f"{status.shortfall_ns / 1e6:.1f}ms"
+            if status.shortfall_ns is not None
+            else "n/a"
+        )
+        self._node.get_logger().warn(
+            f"No synchronized group for {now - self._last_group_time:.0f}s while messages "
+            f"are still arriving: {status.blocked.name}. "
+            f"Buffers [{buffers}], spread short by {shortfall_ms}. "
+            f"The streams' timestamps are too far apart to pair within the "
+            f"{self._config.window_size_ms}ms window -- check sensor clock sync, or "
+            f"widen sync_tolerance_ms."
+        )
 
     def _log_buffer_overflow(self, topic: str) -> None:
         """Log a buffer overflow warning with rate limiting."""

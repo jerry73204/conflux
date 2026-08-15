@@ -23,8 +23,17 @@ Example:
 """
 
 from ._core import DropPolicy, SyncConfig, SyncGroup, Synchronizer
+from ._ffi import BlockedReason, ConfluxResult, MatchStatus
 
-__all__ = ["DropPolicy", "SyncConfig", "SyncGroup", "Synchronizer"]
+__all__ = [
+    "BlockedReason",
+    "ConfluxResult",
+    "DropPolicy",
+    "MatchStatus",
+    "SyncConfig",
+    "SyncGroup",
+    "Synchronizer",
+]
 
 # Conditionally import ROS2Synchronizer and SyncStatistics if rclpy is available
 try:

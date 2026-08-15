@@ -96,7 +96,6 @@ mod tests {
                 window_size: Duration::from_millis(50),
                 buffer_size: 64,
             },
-            staleness: None,
             qos: QosConfig {
                 reliability: Reliability::BestEffort,
                 history_depth: 5,

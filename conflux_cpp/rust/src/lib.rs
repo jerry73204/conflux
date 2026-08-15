@@ -4,7 +4,7 @@
 //! synchronization algorithm for use in C++ ROS2 nodes.
 
 use conflux_core::{
-    DropPolicy as CoreDropPolicy, WithTimestamp,
+    BlockedReason, DropPolicy as CoreDropPolicy, WithTimestamp,
     buffer::Buffer,
     state::{PushError, State},
 };
@@ -178,7 +178,6 @@ pub unsafe extern "C" fn conflux_synchronizer_new(
             window_size,
             drop_policy: config.drop_policy.into(),
             feedback_tx: None,
-            staleness_detector: None,
             space_notify: Arc::new(Notify::new()),
         };
 
@@ -203,6 +202,110 @@ pub unsafe extern "C" fn conflux_synchronizer_free(sync: *mut ConfluxSynchronize
         if !sync.is_null() {
             drop(Box::from_raw(sync));
         }
+    }
+}
+
+/// Why the matcher is not currently emitting, mirroring `conflux_core::BlockedReason`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfluxBlockedReason {
+    /// A group is available right now -- nothing is blocked.
+    NotBlocked = 0,
+    /// At least one stream has delivered nothing yet.
+    WaitingForData = 1,
+    /// All streams have data, but everything sits inside a band narrower than
+    /// the window, so the matcher is holding out for a better pairing.
+    SpreadTooNarrow = 2,
+    /// A buffer is at capacity and no group fits the window. Does not resolve on
+    /// its own; `conflux_poll` forces progress out of it (C-05).
+    BufferFullNoMatch = 3,
+}
+
+/// A snapshot of the matcher's own view, for diagnosing why nothing is emitted.
+///
+/// M-23: timestamps are nanoseconds, and `-1` means "not applicable" (some
+/// buffer is empty, or the window is infinite so nothing is being waited for).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ConfluxStatus {
+    /// Greatest of the per-stream oldest timestamps, or -1.
+    pub inf_ts_ns: i64,
+    /// Least of the per-stream newest timestamps, or -1.
+    pub sup_ts_ns: i64,
+    /// `sup_ts - inf_ts`, or -1.
+    pub spread_ns: i64,
+    /// Additional spread needed before the matcher stops waiting, or -1.
+    pub shortfall_ns: i64,
+    /// Why no group is available.
+    pub blocked: ConfluxBlockedReason,
+}
+
+/// Read the matcher's current status.
+///
+/// M-23: the input-side counters cannot tell a healthy wait from a stall. This
+/// reports what the matcher itself sees, so a caller can answer "why is it not
+/// matching?" without attaching a debugger.
+///
+/// # Safety
+///
+/// - `sync` must be a valid pointer from `conflux_synchronizer_new`.
+/// - `out` must point to a writable `ConfluxStatus`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn conflux_get_status(
+    sync: *const ConfluxSynchronizer,
+    out: *mut ConfluxStatus,
+) -> ConfluxResult {
+    unsafe {
+        if sync.is_null() || out.is_null() {
+            return ConfluxResult::NullPointer;
+        }
+
+        let status = (*sync).state.lock().unwrap().match_status();
+        let ns = |d: Option<std::time::Duration>| d.map_or(-1, |d| d.as_nanos() as i64);
+
+        ptr::write(
+            out,
+            ConfluxStatus {
+                inf_ts_ns: ns(status.inf_ts),
+                sup_ts_ns: ns(status.sup_ts),
+                spread_ns: ns(status.spread),
+                shortfall_ns: ns(status.shortfall),
+                blocked: match status.blocked {
+                    None => ConfluxBlockedReason::NotBlocked,
+                    Some(BlockedReason::WaitingForData) => ConfluxBlockedReason::WaitingForData,
+                    Some(BlockedReason::SpreadTooNarrow) => ConfluxBlockedReason::SpreadTooNarrow,
+                    Some(BlockedReason::BufferFullNoMatch) => {
+                        ConfluxBlockedReason::BufferFullNoMatch
+                    }
+                },
+            },
+        );
+        ConfluxResult::Ok
+    }
+}
+
+/// Discard all buffered messages and forget all timestamp history.
+///
+/// M-22: call this when the message source restarts its clock -- a rosbag loop,
+/// a sim-time reset, or a sensor that reconnects and restarts its stamp counter.
+/// Without it the affected buffer rejects every later message as out-of-order
+/// forever, and because a group needs all streams non-empty, one dead stream
+/// stalls the entire synchronizer with no way back.
+///
+/// Buffered messages are dropped. Callers holding references keyed by
+/// `user_data` should reconcile with `conflux_for_each_live` after this call --
+/// which will report nothing live, since every buffer is now empty.
+///
+/// # Safety
+///
+/// `sync` must be a valid pointer from `conflux_synchronizer_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn conflux_synchronizer_reset(sync: *mut ConfluxSynchronizer) {
+    unsafe {
+        if sync.is_null() {
+            return;
+        }
+        (*sync).state.lock().unwrap().reset();
     }
 }
 
@@ -620,6 +723,106 @@ mod tests {
             groups > 0,
             "DropOldest wedged: all 40 pushes accepted but no group ever emitted"
         );
+    }
+
+    /// M-22: a clock restart (bag loop, sim-time reset, sensor reconnect) must be
+    /// recoverable through the C ABI, not just from Rust.
+    #[test]
+    fn test_reset_revives_stream_after_clock_jump() {
+        const MS: i64 = 1_000_000;
+
+        let config = ConfluxConfig {
+            window_size_ms: 50,
+            buffer_size: 8,
+            drop_policy: ConfluxDropPolicy::RejectNew,
+        };
+
+        let key_a = std::ffi::CString::new("A").unwrap();
+        let key_b = std::ffi::CString::new("B").unwrap();
+        let keys = [key_a.as_ptr(), key_b.as_ptr()];
+
+        let sync = unsafe { conflux_synchronizer_new(&config, keys.as_ptr(), keys.len()) };
+        assert!(!sync.is_null());
+
+        unsafe {
+            // Normal operation, and a group so the commit timestamp advances.
+            conflux_push_message(sync, key_a.as_ptr(), 5000 * MS, ptr::null_mut());
+            conflux_push_message(sync, key_b.as_ptr(), 5010 * MS, ptr::null_mut());
+            assert_eq!(conflux_poll(sync, None, ptr::null_mut()), 1);
+
+            // The source restarts its clock: every push is now refused.
+            assert_ne!(
+                conflux_push_message(sync, key_a.as_ptr(), 1000 * MS, ptr::null_mut()),
+                ConfluxResult::Ok
+            );
+
+            conflux_synchronizer_reset(sync);
+
+            assert_eq!(
+                conflux_push_message(sync, key_a.as_ptr(), 1000 * MS, ptr::null_mut()),
+                ConfluxResult::Ok
+            );
+            assert_eq!(
+                conflux_push_message(sync, key_b.as_ptr(), 1010 * MS, ptr::null_mut()),
+                ConfluxResult::Ok
+            );
+            assert_eq!(
+                conflux_poll(sync, None, ptr::null_mut()),
+                1,
+                "synchronizer should emit again after a reset"
+            );
+
+            conflux_synchronizer_free(sync);
+        }
+    }
+
+    /// M-23: the wedge state must be reportable through the C ABI.
+    #[test]
+    fn test_status_reports_blocked_reason() {
+        const MS: i64 = 1_000_000;
+
+        let config = ConfluxConfig {
+            window_size_ms: 50,
+            buffer_size: 2,
+            drop_policy: ConfluxDropPolicy::RejectNew,
+        };
+
+        let key_a = std::ffi::CString::new("A").unwrap();
+        let key_b = std::ffi::CString::new("B").unwrap();
+        let keys = [key_a.as_ptr(), key_b.as_ptr()];
+
+        let sync = unsafe { conflux_synchronizer_new(&config, keys.as_ptr(), keys.len()) };
+        assert!(!sync.is_null());
+
+        unsafe {
+            let mut status = ConfluxStatus {
+                inf_ts_ns: 0,
+                sup_ts_ns: 0,
+                spread_ns: 0,
+                shortfall_ns: 0,
+                blocked: ConfluxBlockedReason::NotBlocked,
+            };
+
+            // Nothing pushed yet.
+            assert_eq!(conflux_get_status(sync, &mut status), ConfluxResult::Ok);
+            assert_eq!(status.blocked, ConfluxBlockedReason::WaitingForData);
+            assert_eq!(status.inf_ts_ns, -1);
+
+            // Only one stream has data.
+            conflux_push_message(sync, key_a.as_ptr(), 1000 * MS, ptr::null_mut());
+            conflux_get_status(sync, &mut status);
+            assert_eq!(status.blocked, ConfluxBlockedReason::WaitingForData);
+
+            // The C-05 shape: buffers full, nothing pairs.
+            conflux_push_message(sync, key_a.as_ptr(), 1010 * MS, ptr::null_mut());
+            conflux_push_message(sync, key_b.as_ptr(), 5000 * MS, ptr::null_mut());
+            conflux_push_message(sync, key_b.as_ptr(), 5010 * MS, ptr::null_mut());
+            conflux_get_status(sync, &mut status);
+            assert_eq!(status.blocked, ConfluxBlockedReason::BufferFullNoMatch);
+            assert!(status.shortfall_ns > 0, "a shortfall should be reported");
+
+            conflux_synchronizer_free(sync);
+        }
     }
 
     #[test]

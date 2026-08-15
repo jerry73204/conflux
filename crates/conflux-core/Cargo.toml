@@ -10,10 +10,6 @@ readme = "README.md"
 keywords = ["synchronization", "streams", "real-time", "time-window", "sensor-fusion"]
 categories = ["algorithms", "asynchronous", "data-structures"]
 
-[features]
-default = []
-tokio = []
-
 [dependencies]
 futures.workspace = true
 itertools.workspace = true
@@ -29,7 +25,3 @@ eyre.workspace = true
 [dev-dependencies]
 rand = "0.9"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-
-[[test]]
-name = "staleness_tokio_tests"
-required-features = ["tokio"]

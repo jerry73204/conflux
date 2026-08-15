@@ -1,4 +1,3 @@
-use crate::staleness::StalenessConfig;
 use std::time::Duration;
 
 /// Policy for handling buffer overflow when pushing new messages.
@@ -26,29 +25,10 @@ pub struct Config {
     pub buf_size: usize,
     /// Policy for handling buffer overflow.
     pub drop_policy: DropPolicy,
-    /// Staleness detection configuration (optional)
-    pub staleness_config: Option<StalenessConfig>,
 }
 
 impl Config {
-    /// Create a new Config with staleness detection enabled
-    pub fn with_staleness(
-        window_size: Option<Duration>,
-        start_time: Option<Duration>,
-        buf_size: usize,
-        drop_policy: DropPolicy,
-        staleness_config: StalenessConfig,
-    ) -> Self {
-        Self {
-            window_size,
-            start_time,
-            buf_size,
-            drop_policy,
-            staleness_config: Some(staleness_config),
-        }
-    }
-
-    /// Create a basic Config without staleness detection
+    /// Create a basic Config.
     pub fn basic(
         window_size: Option<Duration>,
         start_time: Option<Duration>,
@@ -59,7 +39,6 @@ impl Config {
             start_time,
             buf_size,
             drop_policy: DropPolicy::default(),
-            staleness_config: None,
         }
     }
 
@@ -71,7 +50,6 @@ impl Config {
             start_time: None,
             buf_size,
             drop_policy: DropPolicy::RejectNew,
-            staleness_config: None,
         }
     }
 
@@ -83,19 +61,12 @@ impl Config {
             start_time: None,
             buf_size,
             drop_policy: DropPolicy::DropOldest,
-            staleness_config: None,
         }
     }
 
     /// Set the drop policy
     pub fn with_drop_policy(mut self, drop_policy: DropPolicy) -> Self {
         self.drop_policy = drop_policy;
-        self
-    }
-
-    /// Enable staleness detection on an existing config
-    pub fn enable_staleness(mut self, staleness_config: StalenessConfig) -> Self {
-        self.staleness_config = Some(staleness_config);
         self
     }
 }

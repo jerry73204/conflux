@@ -10,7 +10,6 @@
 //! - Input topics and their message types
 //! - Output topic for synchronized batches
 //! - Synchronization parameters (window size, buffer size)
-//! - Optional staleness detection settings
 //! - Optional QoS configuration
 //!
 //! See the `config/example.yaml` file for a complete example.

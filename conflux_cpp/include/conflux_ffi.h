@@ -78,6 +78,30 @@ typedef enum ConfluxResult {
 } ConfluxResult;
 
 /**
+ * Why the matcher is not currently emitting, mirroring `conflux_core::BlockedReason`.
+ */
+typedef enum ConfluxBlockedReason {
+  /**
+   * A group is available right now -- nothing is blocked.
+   */
+  ConfluxBlockedReason_NotBlocked = 0,
+  /**
+   * At least one stream has delivered nothing yet.
+   */
+  ConfluxBlockedReason_WaitingForData = 1,
+  /**
+   * All streams have data, but everything sits inside a band narrower than
+   * the window, so the matcher is holding out for a better pairing.
+   */
+  ConfluxBlockedReason_SpreadTooNarrow = 2,
+  /**
+   * A buffer is at capacity and no group fits the window. Does not resolve on
+   * its own; `conflux_poll` forces progress out of it (C-05).
+   */
+  ConfluxBlockedReason_BufferFullNoMatch = 3,
+} ConfluxBlockedReason;
+
+/**
  * Opaque handle to a synchronizer instance.
  *
  * The synchronizer manages multiple message streams and outputs
@@ -103,6 +127,35 @@ typedef struct ConfluxConfig {
    */
   enum ConfluxDropPolicy drop_policy;
 } ConfluxConfig;
+
+/**
+ * A snapshot of the matcher's own view, for diagnosing why nothing is emitted.
+ *
+ * M-23: timestamps are nanoseconds, and `-1` means "not applicable" (some
+ * buffer is empty, or the window is infinite so nothing is being waited for).
+ */
+typedef struct ConfluxStatus {
+  /**
+   * Greatest of the per-stream oldest timestamps, or -1.
+   */
+  int64_t inf_ts_ns;
+  /**
+   * Least of the per-stream newest timestamps, or -1.
+   */
+  int64_t sup_ts_ns;
+  /**
+   * `sup_ts - inf_ts`, or -1.
+   */
+  int64_t spread_ns;
+  /**
+   * Additional spread needed before the matcher stops waiting, or -1.
+   */
+  int64_t shortfall_ns;
+  /**
+   * Why no group is available.
+   */
+  enum ConfluxBlockedReason blocked;
+} ConfluxStatus;
 
 #ifdef __cplusplus
 extern "C" {
@@ -130,6 +183,40 @@ struct ConfluxSynchronizer *conflux_synchronizer_new(const struct ConfluxConfig 
  * not be used after this call.
  */
 void conflux_synchronizer_free(struct ConfluxSynchronizer *sync);
+
+/**
+ * Read the matcher's current status.
+ *
+ * M-23: the input-side counters cannot tell a healthy wait from a stall. This
+ * reports what the matcher itself sees, so a caller can answer "why is it not
+ * matching?" without attaching a debugger.
+ *
+ * # Safety
+ *
+ * - `sync` must be a valid pointer from `conflux_synchronizer_new`.
+ * - `out` must point to a writable `ConfluxStatus`.
+ */
+enum ConfluxResult conflux_get_status(const struct ConfluxSynchronizer *sync,
+                                      struct ConfluxStatus *out);
+
+/**
+ * Discard all buffered messages and forget all timestamp history.
+ *
+ * M-22: call this when the message source restarts its clock -- a rosbag loop,
+ * a sim-time reset, or a sensor that reconnects and restarts its stamp counter.
+ * Without it the affected buffer rejects every later message as out-of-order
+ * forever, and because a group needs all streams non-empty, one dead stream
+ * stalls the entire synchronizer with no way back.
+ *
+ * Buffered messages are dropped. Callers holding references keyed by
+ * `user_data` should reconcile with `conflux_for_each_live` after this call --
+ * which will report nothing live, since every buffer is now empty.
+ *
+ * # Safety
+ *
+ * `sync` must be a valid pointer from `conflux_synchronizer_new`.
+ */
+void conflux_synchronizer_reset(struct ConfluxSynchronizer *sync);
 
 /**
  * Push a message to the synchronizer.

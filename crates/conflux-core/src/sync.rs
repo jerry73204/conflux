@@ -1,7 +1,6 @@
 use crate::{
     Config, Feedback,
     buffer::Buffer,
-    staleness::StalenessDetector,
     state::State,
     types::{FeedbackReceiver, Key, OutputStream, WithTimestamp},
 };
@@ -44,7 +43,6 @@ where
         start_time,
         buf_size,
         drop_policy,
-        staleness_config,
     } = config;
 
     // Sanity check
@@ -75,9 +73,6 @@ where
         watch::channel(init_feedback)
     };
 
-    // Initialize staleness detector if configured
-    let staleness_detector = staleness_config.map(StalenessDetector::new);
-
     // Initialize the internal state.
     let mut state = State {
         feedback_tx: Some(feedback_tx),
@@ -86,7 +81,6 @@ where
         buf_size,
         window_size,
         drop_policy,
-        staleness_detector,
         space_notify: Arc::new(Notify::new()),
     };
 
@@ -147,9 +141,6 @@ where
             if let Some(commit_ts) = state.commit_ts {
                 let _expired_count = state.drop_expired_messages(commit_ts);
             }
-
-            // Process staleness expiration if configured.
-            let _stale_count = state.process_staleness_expiration();
 
             // Emit as soon as a group is available. `advance` also forces
             // progress when a buffer is full and nothing can match, so this

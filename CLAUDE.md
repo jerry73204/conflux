@@ -99,7 +99,6 @@ conflux/
 │   │   │   ├── lib.rs            # Public API, sync() function
 │   │   │   ├── state.rs          # Core state machine
 │   │   │   ├── buffer.rs         # Per-stream message buffering
-│   │   │   ├── staleness.rs      # Message expiration system
 │   │   │   └── types.rs          # WithTimestamp trait, Key trait
 │   │   └── tests/                # Integration tests
 │   │
@@ -343,7 +342,7 @@ Statistics are logged on Ctrl+C shutdown:
 
 ```bash
 # Core library tests (no ROS2 required)
-just test-core          # 166 tests
+just test-core
 
 # All Rust tests (core + FFI)
 just test-rust

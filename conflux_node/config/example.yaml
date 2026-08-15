@@ -35,14 +35,10 @@ sync:
   # Larger buffers handle more jitter but use more memory
   buffer_size: 64
 
-# Staleness detection (optional but recommended)
-# Prevents memory buildup when streams have different rates or go offline
-staleness:
-  # Preset configuration options:
-  #   - high_frequency: For sensors @ 10-30Hz (tight windows, aggressive cleanup)
-  #   - low_frequency: For sensors @ 1-10Hz (relaxed windows)
-  #   - batch: For offline/rosbag processing (large buffers, lazy cleanup)
-  preset: high_frequency
+# Note: the `staleness:` block was removed in 0.3. Per-message expiry is now
+# driven purely by message timestamps (see `WithTimestamp::timeout`), which is
+# the only clock that is meaningful for recorded playback. A leftover
+# `staleness:` key in an old config is ignored.
 
 # QoS settings (optional)
 # Defaults to sensor_data profile if not specified

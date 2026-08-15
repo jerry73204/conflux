@@ -131,6 +131,17 @@ where
         count
     }
 
+    /// Discard every buffered message and clear the monotonic high-water mark.
+    ///
+    /// M-22: `last_ts` is never cleared during normal operation, which is right
+    /// for a monotonic stream but fatal when the source legitimately restarts its
+    /// clock -- a bag loop, a sim-time reset, a reconnecting sensor. Without this
+    /// the buffer rejects every subsequent message as out-of-order, forever.
+    pub fn reset(&mut self) {
+        self.buffer.clear();
+        self.last_ts = None;
+    }
+
     /// Try to push a message into the buffer.
     ///
     /// If the timestamp on the message is below that of the

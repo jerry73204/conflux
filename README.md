@@ -8,7 +8,7 @@ Conflux synchronizes messages from multiple input topics within configurable tim
 
 - **Dynamic message type support**: Works with any ROS2 message type that has a `std_msgs/Header` field (sensor_msgs, nav_msgs, geometry_msgs, custom types, etc.)
 - **Configurable time windows**: Define synchronization windows from microseconds to seconds
-- **Staleness detection**: Prevents memory buildup when streams have different rates or go offline
+- **Message expiry**: Per-message timeouts, measured on the message clock, bound buffer growth when streams have different rates or go offline
 - **Multiple presets**: Pre-configured settings for high-frequency sensors, low-frequency sensors, and batch processing
 - **Flexible QoS**: Configure reliability and history depth per your requirements
 
@@ -97,23 +97,12 @@ sync:
   window_size: 50ms
   buffer_size: 64
 
-staleness:
-  preset: high_frequency  # or: low_frequency, batch
-
 qos:
   reliability: best_effort  # or: reliable
   history_depth: 1
 ```
 
 See `config/example.yaml` for full documentation of all options.
-
-### Staleness Presets
-
-| Preset           | Use Case                  | Window Behavior                   |
-|------------------|---------------------------|-----------------------------------|
-| `high_frequency` | Sensors @ 10-30Hz         | Tight windows, aggressive cleanup |
-| `low_frequency`  | Sensors @ 1-10Hz          | Relaxed windows                   |
-| `batch`          | Offline/rosbag processing | Large buffers, lazy cleanup       |
 
 ## Development
 

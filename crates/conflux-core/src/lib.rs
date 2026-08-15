@@ -56,14 +56,12 @@
 
 pub mod buffer;
 mod config;
-pub mod staleness;
 pub mod state;
 mod sync;
 mod types;
 mod utils;
 
 pub use config::{Config, DropPolicy};
-pub use staleness::{StalenessConfig, StalenessDetector, StalenessStats};
-pub use state::PushError;
+pub use state::{BlockedReason, MatchStatus, PushError};
 pub use sync::sync;
 pub use types::*;

@@ -5,7 +5,10 @@ This module provides Python-friendly wrappers around the low-level FFI bindings.
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+
+if TYPE_CHECKING:
+    from ._ffi import ConfluxResult, MatchStatus
 
 
 class DropPolicy(IntEnum):
@@ -217,13 +220,15 @@ class Synchronizer:
         return self._ffi_sync.push(topic, timestamp_ns, message)
 
     @property
-    def last_push_result(self) -> int:
+    def last_push_result(self) -> "ConfluxResult":
         """Result code (ConfluxResult) of the most recent push().
 
         Lets callers distinguish a real buffer overflow (BUFFER_FULL) from a
         late / out-of-order drop, which are normal under BEST_EFFORT QoS.
         """
-        return self._ffi_sync._last_result
+        from ._ffi import ConfluxResult
+
+        return ConfluxResult(self._ffi_sync.last_result)
 
     def poll(self) -> Optional[SyncGroup]:
         """Poll for a synchronized group of messages.
@@ -274,6 +279,31 @@ class Synchronizer:
     def buffer_len(self, topic: str) -> int:
         """Get the buffer length for a specific topic."""
         return self._ffi_sync.buffer_len(topic)
+
+    @property
+    def status(self) -> "MatchStatus":
+        """Why the matcher is or is not emitting a group.
+
+        The push/poll counters describe inputs only, so they cannot tell a
+        healthy wait from a stall -- a wedged synchronizer under DropOldest
+        accepts every message and reports no rejections while emitting nothing.
+        Check ``status.is_stalled`` to distinguish the two.
+        """
+        return self._ffi_sync.status()
+
+    def reset(self) -> None:
+        """Discard all buffered messages and forget all timestamp history.
+
+        Use this when the message source restarts its clock -- a rosbag loop, a
+        sim-time reset, or a sensor that reconnects and restarts its stamp
+        counter. Buffers reject any timestamp at or below the last one they
+        accepted, so without a reset the affected stream is dead permanently,
+        and one dead stream stalls the whole synchronizer.
+
+        Buffered messages are discarded: they belong to the old clock and cannot
+        match anything that follows.
+        """
+        self._ffi_sync.reset()
 
     def __iter__(self) -> Iterator[SyncGroup]:
         """Iterate over synchronized groups."""

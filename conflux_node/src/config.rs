@@ -16,10 +16,6 @@ pub struct Config {
     /// Synchronization parameters.
     pub sync: SyncConfig,
 
-    /// Optional staleness detection configuration.
-    #[serde(default)]
-    pub staleness: Option<StalenessConfig>,
-
     /// Optional QoS configuration.
     #[serde(default)]
     pub qos: QosConfig,
@@ -93,18 +89,6 @@ impl Config {
     pub fn to_sync_config(&self) -> conflux_ros2::conflux_core::Config {
         use conflux_ros2::conflux_core;
 
-        let staleness_config = self.staleness.as_ref().map(|s| match s.preset {
-            StalenessPreset::HighFrequency => {
-                conflux_core::StalenessConfig::high_frequency()
-            }
-            StalenessPreset::LowFrequency => {
-                conflux_core::StalenessConfig::low_frequency()
-            }
-            StalenessPreset::Batch => {
-                conflux_core::StalenessConfig::batch_processing()
-            }
-        });
-
         let drop_policy = match self.sync.drop_policy {
             DropPolicySetting::RejectNew => conflux_core::DropPolicy::RejectNew,
             DropPolicySetting::DropOldest => conflux_core::DropPolicy::DropOldest,
@@ -115,7 +99,6 @@ impl Config {
             start_time: None,
             buf_size: self.sync.buffer_size,
             drop_policy,
-            staleness_config,
         }
     }
 }
@@ -170,26 +153,6 @@ pub enum DropPolicySetting {
     /// Drop the oldest message to make room for the new one.
     /// Always accepts new data. Suitable for realtime processing.
     DropOldest,
-}
-
-/// Staleness detection configuration.
-#[derive(Debug, Clone, Deserialize)]
-pub struct StalenessConfig {
-    /// Preset configuration: "high_frequency", "low_frequency", or "batch"
-    pub preset: StalenessPreset,
-}
-
-/// Staleness preset options.
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum StalenessPreset {
-    /// High-frequency streaming (sub-millisecond precision, real-time)
-    #[default]
-    HighFrequency,
-    /// Low-frequency streaming (millisecond precision, near real-time)
-    LowFrequency,
-    /// Batch processing (relaxed precision, lazy checking)
-    Batch,
 }
 
 /// QoS configuration.
@@ -249,9 +212,6 @@ output:
 sync:
   window_size: 50ms
   buffer_size: 64
-
-staleness:
-  preset: high_frequency
 
 qos:
   reliability: best_effort

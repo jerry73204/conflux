@@ -5,6 +5,8 @@ which is built as part of the conflux_cpp package.
 """
 
 import ctypes
+from dataclasses import dataclass
+from enum import IntEnum
 import os
 from ctypes import (
     CFUNCTYPE,
@@ -23,7 +25,13 @@ from typing import Optional
 
 
 # Result codes from the FFI
-class ConfluxResult:
+class ConfluxResult(IntEnum):
+    """Result code returned by the FFI for a push (L-18).
+
+    An IntEnum so it stays comparable with the raw ints callers may already be
+    testing against, while `ConfluxResult(2).name` now works.
+    """
+
     OK = 0
     INVALID_ARGUMENT = 1
     BUFFER_FULL = 2
@@ -63,8 +71,69 @@ class ConfluxConfig(Structure):
 # void (*callback)(const char *key, int64_t timestamp_ns, void *user_data, void *context)
 POLL_CALLBACK = CFUNCTYPE(None, c_char_p, c_int64, c_void_p, c_void_p)
 
+
 # Callback type for conflux_for_each_live
 # void (*callback)(void *user_data, void *context)
+class BlockedReason(IntEnum):
+    """Why the matcher is not currently emitting a group (M-23)."""
+
+    WAITING_FOR_DATA = 1
+    """At least one stream has delivered nothing yet."""
+
+    SPREAD_TOO_NARROW = 2
+    """All streams have data, but everything sits inside a band narrower than
+    the window, so the matcher is holding out for a better pairing."""
+
+    BUFFER_FULL_NO_MATCH = 3
+    """A buffer is at capacity and no group fits the window. This does not
+    resolve on its own; poll() forces progress out of it (C-05)."""
+
+
+class ConfluxStatus(ctypes.Structure):
+    """Raw status structure returned by conflux_get_status."""
+
+    _fields_ = [
+        ("inf_ts_ns", c_int64),
+        ("sup_ts_ns", c_int64),
+        ("spread_ns", c_int64),
+        ("shortfall_ns", c_int64),
+        ("blocked", c_int32),
+    ]
+
+
+@dataclass(frozen=True)
+class MatchStatus:
+    """A snapshot of the matcher's own view (M-23).
+
+    The input-side statistics -- received, rejected, buffer length -- cannot
+    distinguish a healthy wait from a stall. This can.
+    """
+
+    inf_ts_ns: Optional[int]
+    """Greatest of the per-stream oldest timestamps; None while a buffer is empty."""
+
+    sup_ts_ns: Optional[int]
+    """Least of the per-stream newest timestamps; None while a buffer is empty."""
+
+    spread_ns: Optional[int]
+    """sup_ts - inf_ts."""
+
+    shortfall_ns: Optional[int]
+    """Additional spread needed before the matcher stops waiting."""
+
+    blocked: Optional[BlockedReason]
+    """Why no group is available, or None if one is ready right now."""
+
+    @property
+    def is_stalled(self) -> bool:
+        """True when the matcher cannot resolve this state by waiting.
+
+        BUFFER_FULL_NO_MATCH is the signature of the C-05 wedge shape: buffers
+        that cannot grow and messages that cannot pair.
+        """
+        return self.blocked is BlockedReason.BUFFER_FULL_NO_MATCH
+
+
 LIVE_CALLBACK = CFUNCTYPE(None, c_void_p, c_void_p)
 
 
@@ -126,6 +195,12 @@ if _lib_path:
 
         _lib.conflux_synchronizer_free.argtypes = [c_void_p]
         _lib.conflux_synchronizer_free.restype = None
+
+        _lib.conflux_synchronizer_reset.argtypes = [c_void_p]
+        _lib.conflux_synchronizer_reset.restype = None
+
+        _lib.conflux_get_status.argtypes = [c_void_p, ctypes.POINTER(ConfluxStatus)]
+        _lib.conflux_get_status.restype = c_int32
 
         _lib.conflux_push_message.argtypes = [c_void_p, c_char_p, c_int64, c_void_p]
         _lib.conflux_push_message.restype = c_int32
@@ -374,3 +449,43 @@ class FFISynchronizer:
         if not self._handle:
             return 0
         return _lib.conflux_buffer_len(self._handle, topic.encode("utf-8"))
+
+    @property
+    def last_result(self) -> int:
+        """Result code of the most recent push (L-18)."""
+        return self._last_result
+
+    def status(self) -> "MatchStatus":
+        """Read the matcher's current status (M-23)."""
+        raw = ConfluxStatus()
+        if not self._handle:
+            return MatchStatus(None, None, None, None, BlockedReason.WAITING_FOR_DATA)
+        _lib.conflux_get_status(self._handle, ctypes.byref(raw))
+
+        def opt(v: int) -> Optional[int]:
+            # The FFI encodes "not applicable" as -1.
+            return None if v < 0 else v
+
+        return MatchStatus(
+            inf_ts_ns=opt(raw.inf_ts_ns),
+            sup_ts_ns=opt(raw.sup_ts_ns),
+            spread_ns=opt(raw.spread_ns),
+            shortfall_ns=opt(raw.shortfall_ns),
+            blocked=None if raw.blocked == 0 else BlockedReason(raw.blocked),
+        )
+
+    def reset(self) -> None:
+        """Discard all buffered messages and forget all timestamp history.
+
+        M-22: use this when the source restarts its clock -- a rosbag loop, a
+        sim-time reset, or a sensor that reconnects and restarts its stamps.
+        Without it the affected buffer rejects every later message as
+        out-of-order forever, and one dead stream stalls the synchronizer.
+        """
+        if not self._handle:
+            return
+        _lib.conflux_synchronizer_reset(self._handle)
+        # Every buffer is now empty, so no message reference is still live.
+        # Dropping them here keeps the C-02 bookkeeping exact instead of waiting
+        # for the periodic reconcile in poll().
+        self._message_refs.clear()

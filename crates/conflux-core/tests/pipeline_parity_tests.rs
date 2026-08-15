@@ -99,7 +99,6 @@ async fn sync_drop_oldest_recovers_from_divergence() {
         start_time: None,
         buf_size: 2,
         drop_policy: DropPolicy::DropOldest,
-        staleness_config: None,
     };
     let (out, _fb) = sync(stream::iter(items).boxed(), vec!["A", "B"], config).unwrap();
     let groups: Vec<IndexMap<&str, Msg>> = out.try_collect().await.unwrap();

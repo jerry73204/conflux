@@ -1,7 +1,6 @@
 use crate::{
     buffer::Buffer,
     config::DropPolicy,
-    staleness::StalenessDetector,
     types::{Feedback, Key, WithTimestamp},
 };
 use indexmap::IndexMap;
@@ -36,6 +35,50 @@ impl<T> PushError<T> {
     }
 }
 
+/// Why the matcher is not currently producing a group.
+///
+/// M-23: the input-side statistics cannot distinguish "waiting for the next
+/// message" from "wedged and never emitting again". This can.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockedReason {
+    /// At least one stream has delivered nothing yet, so no group can exist.
+    /// Normal at startup, and the expected state for a silent or dead stream.
+    WaitingForData,
+
+    /// Every stream has data, but the buffered messages all sit inside a band
+    /// narrower than the window, so the matcher is holding out for a better
+    /// pairing. Normal in steady state; suspicious if it persists.
+    SpreadTooNarrow,
+
+    /// A buffer is at capacity and no group fits the window. Nothing further can
+    /// be buffered for that stream, so this state does not resolve on its own --
+    /// [`State::advance`] forces progress out of it (C-05).
+    BufferFullNoMatch,
+}
+
+/// A snapshot of the matcher's own view, for diagnosing why nothing is emitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MatchStatus {
+    /// The greatest of the per-stream oldest timestamps -- the earliest instant a
+    /// group could start. `None` while any buffer is empty.
+    pub inf_ts: Option<Duration>,
+
+    /// The least of the per-stream newest timestamps -- how far every stream has
+    /// been filled. `None` while any buffer is empty.
+    pub sup_ts: Option<Duration>,
+
+    /// `sup_ts - inf_ts`, saturating at zero.
+    pub spread: Option<Duration>,
+
+    /// How much more spread is needed before the matcher stops waiting, i.e.
+    /// `inf_ts + window - sup_ts`. `None` when nothing is being waited for, or
+    /// when the window is infinite.
+    pub shortfall: Option<Duration>,
+
+    /// Why no group is available, or `None` if one is ready right now.
+    pub blocked: Option<BlockedReason>,
+}
+
 /// The internal state maintained by [sync](crate::sync).
 #[derive(Debug)]
 pub struct State<K, T>
@@ -62,9 +105,6 @@ where
 
     /// The sender where feedback messages are sent to.
     pub feedback_tx: Option<watch::Sender<Feedback<K>>>,
-
-    /// Optional staleness detector for real-time message expiration
-    pub staleness_detector: Option<StalenessDetector<K, T>>,
 
     /// Notifier for signaling when buffer space becomes available.
     /// Used by push_blocking() to wait for space.
@@ -261,6 +301,79 @@ where
         }
     }
 
+    /// Snapshot why the matcher is or is not able to emit a group.
+    ///
+    /// M-23: read-only -- it consumes nothing and mutates nothing, so it is safe
+    /// to call from a diagnostic path on every poll.
+    pub fn match_status(&self) -> MatchStatus {
+        let (Some((_, inf_ts)), Some((_, sup_ts))) = (self.inf_timestamp(), self.sup_timestamp())
+        else {
+            // `inf_timestamp`/`sup_timestamp` are None exactly when some buffer
+            // is empty.
+            return MatchStatus {
+                blocked: Some(BlockedReason::WaitingForData),
+                ..MatchStatus::default()
+            };
+        };
+
+        let spread = sup_ts.saturating_sub(inf_ts);
+
+        let Some(window_size) = self.window_size else {
+            // Infinite window: every stream has data, so a group is available.
+            return MatchStatus {
+                inf_ts: Some(inf_ts),
+                sup_ts: Some(sup_ts),
+                spread: Some(spread),
+                shortfall: None,
+                blocked: None,
+            };
+        };
+
+        // Mirrors the gate in `try_match_inner`.
+        let waiting_for_spread = !self.all_one() && inf_ts + window_size > sup_ts;
+
+        let blocked = if !waiting_for_spread {
+            None
+        } else if self.any_full() {
+            // Waiting, but the buffers cannot grow to satisfy the wait.
+            BlockedReason::BufferFullNoMatch.into()
+        } else {
+            BlockedReason::SpreadTooNarrow.into()
+        };
+
+        MatchStatus {
+            inf_ts: Some(inf_ts),
+            sup_ts: Some(sup_ts),
+            spread: Some(spread),
+            shortfall: waiting_for_spread
+                .then(|| (inf_ts + window_size).saturating_sub(sup_ts))
+                .filter(|d| !d.is_zero()),
+            blocked,
+        }
+    }
+
+    /// Clear every buffer and forget all timestamp history.
+    ///
+    /// M-22: use this when the message source restarts its clock -- a bag loop, a
+    /// sim-time reset, a reconnecting sensor. Both gates that reject backwards
+    /// timestamps have to go: each buffer's monotonic high-water mark, and
+    /// `commit_ts`, which independently rejects anything at or before the last
+    /// emitted group. Clearing only one leaves the synchronizer just as dead.
+    ///
+    /// Buffered messages are discarded: they belong to the old clock and cannot
+    /// be matched against anything that follows.
+    pub fn reset(&mut self) {
+        for buffer in self.buffers.values_mut() {
+            buffer.reset();
+        }
+        self.commit_ts = None;
+
+        // Any producer blocked in `push_blocking` is waiting for space that now
+        // exists.
+        self.space_notify.notify_waiters();
+        self.update_feedback();
+    }
+
     /// Gets the minimum of the maximum timestamps from each buffer.
     /// Returns None if any buffer is empty.
     pub fn sup_timestamp(&self) -> Option<(K, Duration)> {
@@ -414,15 +527,6 @@ where
             }
         }
 
-        // Add to staleness detector if configured
-        if let Some(ref mut staleness_detector) = self.staleness_detector {
-            // Use message timeout if available, otherwise use window_size as default staleness timeout
-            let staleness_timeout = item
-                .timeout()
-                .unwrap_or_else(|| self.window_size.unwrap_or(Duration::from_secs(60)));
-            staleness_detector.add_message(key.clone(), item.clone(), staleness_timeout);
-        }
-
         buffer.try_push(item).map_err(PushError::OutOfOrder)
     }
 
@@ -482,32 +586,6 @@ where
             }
         }
     }
-
-    /// Process expired messages from staleness detector and remove them from buffers
-    pub fn process_staleness_expiration(&mut self) -> usize {
-        if let Some(ref mut staleness_detector) = self.staleness_detector {
-            let expired_messages = staleness_detector.drain_expired();
-            let mut removed_count = 0;
-
-            for (key, expired_message) in expired_messages {
-                if let Some(buffer) = self.buffers.get_mut(&key) {
-                    // Since we can't remove specific messages from the middle of the buffer,
-                    // we'll remove from the front if it matches the expired message
-                    // This is a limitation of the current buffer implementation
-                    if let Some(front_msg) = buffer.front()
-                        && front_msg.timestamp() == expired_message.timestamp()
-                    {
-                        buffer.pop_front();
-                        removed_count += 1;
-                    }
-                }
-            }
-
-            removed_count
-        } else {
-            0
-        }
-    }
 }
 
 #[cfg(test)]
@@ -554,7 +632,6 @@ mod tests {
             window_size: Some(Duration::from_millis(window_size_ms)),
             drop_policy: DropPolicy::RejectNew,
             feedback_tx: None,
-            staleness_detector: None,
             space_notify: Arc::new(Notify::new()),
         }
     }
@@ -575,7 +652,6 @@ mod tests {
             window_size: Some(Duration::from_millis(window_size_ms)),
             drop_policy,
             feedback_tx: None,
-            staleness_detector: None,
             space_notify: Arc::new(Notify::new()),
         }
     }
@@ -592,7 +668,6 @@ mod tests {
             window_size: None,
             drop_policy: DropPolicy::RejectNew,
             feedback_tx: None,
-            staleness_detector: None,
             space_notify: Arc::new(Notify::new()),
         }
     }
@@ -822,7 +897,6 @@ mod tests {
             window_size: Some(Duration::from_millis(window_size_ms)),
             drop_policy: DropPolicy::RejectNew,
             feedback_tx: None,
-            staleness_detector: None,
             space_notify: Arc::new(Notify::new()),
         }
     }

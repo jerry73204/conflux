@@ -77,12 +77,12 @@ test: test-rust test-cpp test-python
 
 # Run Rust tests
 test-rust:
-    cargo test --workspace --features tokio
+    cargo test --workspace
     cd conflux_cpp/rust && cargo test
 
 # Run Rust tests with nextest
 test-rust-nextest:
-    cargo nextest run --workspace --features tokio --no-fail-fast
+    cargo nextest run --workspace --no-fail-fast
     cd conflux_cpp/rust && cargo nextest run --no-fail-fast
 
 # Run C++ tests (currently no unit tests, only lint checks available)
@@ -103,11 +103,11 @@ test-python:
 
 # Run conflux-core tests only
 test-core:
-    cargo test -p conflux-core --features tokio
+    cargo test -p conflux-core
 
 # Run conflux-core tests with nextest
 test-core-nextest:
-    cargo nextest run -p conflux-core --features tokio --no-fail-fast
+    cargo nextest run -p conflux-core --no-fail-fast
 
 # Run conflux-ffi tests only
 test-ffi:

@@ -9,7 +9,7 @@ readme = "README.md"
 
 [dependencies]
 # Core synchronization algorithm
-conflux-core = { path = "../conflux-core", features = ["tokio"] }
+conflux-core = { path = "../conflux-core" }
 
 # Async runtime
 tokio = { version = "1", features = ["sync"] }
