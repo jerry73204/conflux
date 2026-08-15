@@ -758,10 +758,6 @@ dependencies = [
 ]
 
 [[patch.unused]]
-name = "action_msgs"
-version = "1.2.2"
-
-[[patch.unused]]
 name = "builtin_interfaces"
 version = "1.2.2"
 
@@ -770,45 +766,9 @@ name = "geometry_msgs"
 version = "4.9.1"
 
 [[patch.unused]]
-name = "lctk_interfaces"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "lifecycle_msgs"
-version = "1.2.2"
-
-[[patch.unused]]
-name = "rcl_interfaces"
-version = "1.2.2"
-
-[[patch.unused]]
-name = "rmw_dds_common"
-version = "1.6.0"
-
-[[patch.unused]]
-name = "rosgraph_msgs"
-version = "1.2.2"
-
-[[patch.unused]]
 name = "sensor_msgs"
 version = "4.9.1"
 
 [[patch.unused]]
-name = "statistics_msgs"
-version = "1.2.2"
-
-[[patch.unused]]
 name = "std_msgs"
-version = "4.9.1"
-
-[[patch.unused]]
-name = "unique_identifier_msgs"
-version = "2.2.1"
-
-[[patch.unused]]
-name = "vision_msgs"
-version = "4.1.1"
-
-[[patch.unused]]
-name = "visualization_msgs"
 version = "4.9.1"
