@@ -79,6 +79,7 @@ test: test-rust test-cpp test-python
 test-rust:
     cargo test --workspace
     cd conflux_cpp/rust && cargo test
+    just test-ros2
 
 # Run Rust tests with nextest
 test-rust-nextest:
@@ -119,6 +120,22 @@ test-core-nextest:
 # Run conflux-ffi tests only
 test-ffi:
     cd conflux_cpp/rust && cargo test
+
+# Run conflux-ros2 tests
+#
+# H-14: this crate is excluded from the cargo workspace (its ROS message deps are
+# wildcards patched by colcon at build time), so nothing ran its tests -- which is
+# how a whole duplicate synchronization algorithm sat in it, covered only by tests
+# that exercised a bare VecDeque. It needs the colcon-generated patch config, so
+# `just build` must have run at least once.
+test-ros2:
+    @if [ -f build/ros2_cargo_config.toml ]; then \
+        cd crates/conflux-ros2 && \
+        cargo test --config "$PWD/../../build/ros2_cargo_config.toml"; \
+    else \
+        echo "build/ros2_cargo_config.toml missing -- run 'just build' first"; \
+        exit 1; \
+    fi
 
 # ==============================================================================
 # Test - Colcon (ROS2 packages)

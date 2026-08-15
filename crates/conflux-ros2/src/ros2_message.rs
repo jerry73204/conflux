@@ -78,5 +78,11 @@ impl Ros2Message {
     }
 }
 
+impl conflux_core::WithTimestamp for Ros2Message {
+    fn timestamp(&self) -> Duration {
+        self.timestamp
+    }
+}
+
 // DynamicMessage is Send + Sync, so Ros2Message can be too
 // (String and Duration are also Send + Sync)

@@ -756,3 +756,19 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[patch.unused]]
+name = "builtin_interfaces"
+version = "1.2.2"
+
+[[patch.unused]]
+name = "geometry_msgs"
+version = "4.9.1"
+
+[[patch.unused]]
+name = "sensor_msgs"
+version = "4.9.1"
+
+[[patch.unused]]
+name = "std_msgs"
+version = "4.9.1"

@@ -32,7 +32,7 @@ pub fn sync<'a, K, T, S, I>(
 ) -> Result<(OutputStream<'a, K, T>, FeedbackReceiver<K>)>
 where
     K: Key + 'a,
-    T: WithTimestamp + Clone + 'a,
+    T: WithTimestamp + 'a,
     S: Stream<Item = Result<(K, T)>> + Unpin + Send + 'a,
     I: IntoIterator<Item = K>,
 {
@@ -110,7 +110,7 @@ where
 fn drain<K, T>(state: &mut State<K, T>) -> Option<Result<IndexMap<K, T>>>
 where
     K: Key,
-    T: WithTimestamp + Clone,
+    T: WithTimestamp,
 {
     loop {
         // No group can be formed while any stream is missing data.
@@ -141,7 +141,7 @@ fn poll<K, T, S>(
 where
     K: Key,
     S: Stream<Item = Result<(K, T)>> + Unpin + Send,
-    T: WithTimestamp + Clone + Send,
+    T: WithTimestamp + Send,
 {
     let group = if let Some(mut input_stream_mut) = input_stream.as_mut().as_pin_mut() {
         // Case: the input stream is not depleted yet.

@@ -84,7 +84,7 @@ pub struct MatchStatus {
 pub struct State<K, T>
 where
     K: Key,
-    T: WithTimestamp + Clone,
+    T: WithTimestamp,
 {
     /// A list of buffers indexed by key K.
     pub buffers: IndexMap<K, Buffer<T>>,
@@ -114,7 +114,7 @@ where
 impl<K, T> State<K, T>
 where
     K: Key,
-    T: WithTimestamp + Clone,
+    T: WithTimestamp,
 {
     /// Generate a feedback message.
     pub fn update_feedback(&mut self) {

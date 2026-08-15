@@ -158,7 +158,7 @@ impl Ros2SyncRunner {
             let timestamp = msg.timestamp;
 
             // Push message to synchronization state
-            match self.state.push(msg) {
+            match self.state.push_message(msg) {
                 Ok(()) => {
                     debug!(
                         topic = %topic,

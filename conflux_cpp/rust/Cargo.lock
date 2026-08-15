@@ -981,3 +981,19 @@ name = "zmij"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd8f3f50b848df28f887acb68e41201b5aea6bc8a8dacc00fb40635ff9a72fea"
+
+[[patch.unused]]
+name = "builtin_interfaces"
+version = "1.2.2"
+
+[[patch.unused]]
+name = "geometry_msgs"
+version = "4.9.1"
+
+[[patch.unused]]
+name = "sensor_msgs"
+version = "4.9.1"
+
+[[patch.unused]]
+name = "std_msgs"
+version = "4.9.1"
