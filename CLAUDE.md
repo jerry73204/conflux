@@ -16,6 +16,37 @@ Run `direnv allow` in the project directory if not already done. All commands in
 
 conflux is a multi-stream message synchronization library for ROS2. It groups messages from multiple topics that fall within configurable time windows.
 
+### The one invariant: a single matching rule
+
+**`State::advance` in `conflux-core` owns the matching policy. Everything else is an adapter.**
+`sync()`, the C FFI's `conflux_poll`, and `conflux-ros2`'s `Ros2SyncState` are three drivers over
+one algorithm — they feed the state and shuttle results, and none of them decides when a group is
+emitted or what gets dropped.
+
+This is worth defending, because it was violated twice and both times cost real bugs:
+
+- The FFI once called `try_match` directly and so lacked the forced-progress escape `sync()` had.
+  Under the shipped realtime preset it wedged permanently after any stream divergence, accepting
+  every message and reporting zero rejections while emitting nothing (C-05, H-12).
+- `Ros2SyncState` carried an entirely separate implementation — its own buffers, `try_match` and
+  drop logic — so the standalone `conflux_node` ran semantics nothing else did and received none
+  of the fixes (H-14).
+
+If you need different behaviour, change `advance` or give it a policy argument. **Do not add a
+fourth implementation.** A divergence here is invisible until someone diffs two pipelines on the
+same input, which is how the 11-vs-12 group discrepancy in H-12 was eventually found.
+
+Related invariants worth keeping:
+
+- **Expiry is message-time.** `Buffer::drop_expired` / `WithTimestamp::timeout` are the mechanism.
+  The old wall-clock staleness subsystem was removed (M-17…M-21): it was unreachable, defective in
+  every part, and on the wrong clock for recorded playback, which is LCTK's default mode.
+- **`reset()` exists for clock restarts** — bag loops, sim-time resets, reconnecting sensors. It
+  must clear both each buffer's `last_ts` *and* the state's `commit_ts`; either alone leaves the
+  stream just as dead (M-22).
+- **`match_status()` answers "why is nothing coming out?"** It is read-only and safe to call on
+  every poll. Prefer extending it over adding ad-hoc logging (M-23).
+
 ### Packages
 
 | Package | Language | Location | Description |
