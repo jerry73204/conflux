@@ -306,6 +306,14 @@ class ROS2Synchronizer:
         """
         return self._stats
 
+    def reset(self) -> None:
+        """Forget buffered messages and committed timestamps.
+
+        ROS subscriptions, the synchronized callback, and cumulative statistics stay
+        intact. This starts a new timestamp epoch without rebuilding the ROS wiring.
+        """
+        self._sync = _Synchronizer(self._topics, self._config)
+
     def is_ready(self) -> bool:
         """Check if all buffers have at least 2 messages."""
         if self._sync is None:
