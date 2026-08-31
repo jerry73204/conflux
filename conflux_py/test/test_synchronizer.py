@@ -3,6 +3,24 @@
 import pytest
 
 
+class _FakeNode:
+    """Small adapter for driving ROS subscription callbacks without a ROS graph."""
+
+    def __init__(self):
+        self.callbacks = {}
+
+    def create_subscription(self, _msg_type, topic, callback, _qos):
+        self.callbacks[topic] = callback
+        return object()
+
+
+class _Message:
+    def __init__(self, timestamp_ns):
+        stamp = type("Stamp", (), {})()
+        stamp.sec, stamp.nanosec = divmod(timestamp_ns, 1_000_000_000)
+        self.header = type("Header", (), {"stamp": stamp})()
+
+
 class TestSyncConfig:
     """Tests for SyncConfig class."""
 
@@ -411,3 +429,30 @@ class TestNamingAndValidation:
         message = str(exc.value)
         assert "buffer_size" in message
         assert "2" in message
+class TestROS2Synchronizer:
+    def test_reset_accepts_a_rewound_timestamp_epoch(self):
+        """Reset keeps the ROS wiring but forgets buffered/committed timestamps."""
+        from conflux_py import ROS2Synchronizer
+
+        node = _FakeNode()
+        sync = ROS2Synchronizer(node, window_size_ms=100, buffer_size=10)
+        sync.add_subscription(_Message, "camera")
+        sync.add_subscription(_Message, "lidar")
+        groups = []
+        sync.on_synchronized(groups.append)
+
+        def publish_pair(timestamp_ns):
+            node.callbacks["camera"](_Message(timestamp_ns))
+            node.callbacks["lidar"](_Message(timestamp_ns))
+
+        publish_pair(100_000_000_000)
+        assert len(groups) == 1
+
+        publish_pair(1_000_000_000)
+        assert len(groups) == 1
+
+        sync.reset()
+        publish_pair(1_000_000_000)
+
+        assert len(groups) == 2
+        assert sync.statistics.messages_received == {"camera": 3, "lidar": 3}

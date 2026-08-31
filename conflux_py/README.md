@@ -54,6 +54,10 @@ class MyNode(Node):
             self.process(image, points)
 ```
 
+When replay starts a new timestamp epoch, `sync.reset()` discards buffered messages
+and the committed timestamp while preserving subscriptions, the callback and
+cumulative statistics.
+
 ## License
 
 MIT OR Apache-2.0
